@@ -1,0 +1,8 @@
+{
+  "name": "Agente de Sheets - Centro de Control Arza",
+  "description": "Agente inteligente experto en Google Sheets para el control de inventarios, compras y materiales de Constructora Arza.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
