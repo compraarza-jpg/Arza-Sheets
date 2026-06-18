@@ -24,9 +24,10 @@ El sistema **NO arregla automáticamente** las inconsistencias de los Excel/Shee
 - UX documentado en `UX.md`.
 - Tokens CSS actualizados en `src/index.css` para alinear con `DESIGN.md`.
 - Auditoría con fallback local: si no hay `GEMINI_API_KEY`, el backend usa reglas locales en `agent/audit.ts`.
-- Endpoints de auditoría: `POST /api/audit` y `POST /api/audit/suggest-codes`.
+- Endpoints de auditoría: `POST /api/audit`, `POST /api/audit/suggest-codes` y `POST /api/audit/export-to-sheets`.
 - Frontend `ArzaAuditor.tsx` separado en pestaña propia (`Auditoría`) con tres sub-vistas: hallazgos, duplicados, sugerir códigos.
 - Cada corrección requiere clic de aprobación; los cambios se reflejan en estado local y Firestore, nunca en Sheets originales sin permiso.
+- Exportar a Google Sheets crea una hoja auxiliar "Auditoría Arza" con tres pestañas: Hallazgos, Duplicados, Sugerencias.
 
 ## Estado actual
 - Backend con agente Gemini (`/api/gemini/chat`) + endpoints de auditoría.

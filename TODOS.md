@@ -1,16 +1,12 @@
 # TODOS — Arza Sheets
 
 ## En progreso
-- [ ] Integrar Google Sheets para escribir hoja de auditoría auxiliar
-  - [ ] Crear hoja "Auditoría Arza" en Drive
-  - [ ] Escribir sugerencias sin tocar originales
 - [ ] Agregar roles básicos en Firebase
   - [ ] Rossy: todo
   - [ ] Margarita: catálogo/precios
   - [ ] Kari/Joli: solo bodega
 
 ## Por hacer
-- [ ] Exportar reporte de auditoría a Google Sheets auxiliar
 - [ ] Notificar por email/ WhatsApp-style cuando hay hallazgos críticos
 
 ## Completado

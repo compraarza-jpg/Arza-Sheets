@@ -17,6 +17,7 @@ import {
   Copy,
   Check,
   MessageSquare,
+  FileSpreadsheet,
   Search,
   ChevronDown,
   ChevronUp,
@@ -38,6 +39,7 @@ interface ArzaAuditorProps {
   materials: Material[];
   orders: PurchaseOrder[];
   warehouse: WarehouseEntry[];
+  token: string | null;
   onUpdateOrder: (updatedOrder: PurchaseOrder) => void;
   onUpdateMaterial: (updatedMaterial: Material) => void;
   onBulkUpdateOrders: (updatedOrders: PurchaseOrder[]) => void;
@@ -72,6 +74,7 @@ export default function ArzaAuditor({
   materials,
   orders,
   warehouse,
+  token,
   onUpdateOrder,
   onUpdateMaterial,
   onBulkUpdateOrders,
@@ -83,6 +86,7 @@ export default function ArzaAuditor({
   const [codeSuggestions, setCodeSuggestions] = useState<CodeSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [fallback, setFallback] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -147,6 +151,37 @@ export default function ArzaAuditor({
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
     showToast('Texto copiado al portapapeles 📋');
+  };
+
+  const exportToSheets = async () => {
+    if (!token) {
+      showToast('Conecta Google primero para exportar a Sheets.');
+      return;
+    }
+    setExporting(true);
+    try {
+      const res = await fetch('/api/audit/export-to-sheets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accessToken: token,
+          issues,
+          duplicates,
+          suggestions: codeSuggestions,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(`Auditoría exportada a Sheets: ${data.title}`);
+      } else {
+        showToast(`Error al exportar: ${data.error || 'desconocido'}`);
+      }
+    } catch (err) {
+      console.error('Export error:', err);
+      showToast('No se pudo exportar a Sheets.');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleFixPrice = (issue: AuditIssue) => {
@@ -319,6 +354,14 @@ export default function ArzaAuditor({
           >
             {copiedId === 'general-report' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
             Copiar reporte
+          </button>
+          <button
+            onClick={exportToSheets}
+            disabled={exporting || !token}
+            className="text-[11px] font-bold bg-white hover:bg-stone-50 disabled:opacity-40 text-stone-700 border border-stone-200 px-3 py-2 rounded-lg flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+          >
+            <FileSpreadsheet className={`w-4 h-4 ${exporting ? 'animate-spin' : ''}`} />
+            {exporting ? 'Exportando...' : 'Exportar a Sheets'}
           </button>
         </div>
       </div>

@@ -155,6 +155,135 @@ app.post('/api/audit/suggest-codes', async (req, res) => {
   }
 });
 
+// Export audit report to a new auxiliary Google Sheet (never touches source sheets)
+app.post('/api/audit/export-to-sheets', async (req, res) => {
+  try {
+    const { accessToken, title, issues, duplicates, suggestions } = req.body as {
+      accessToken: string;
+      title?: string;
+      issues: any[];
+      duplicates?: any[];
+      suggestions?: any[];
+    };
+
+    if (!accessToken) {
+      res.status(400).json({ error: 'accessToken is required' });
+      return;
+    }
+
+    const sheetTitle = title || `Auditoría Arza - ${new Date().toLocaleDateString('es-MX')}`;
+
+    const createRes = await fetch('https://sheets.googleapis.com/v4/spreadsheets', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        properties: { title: sheetTitle },
+        sheets: [
+          { properties: { title: 'Hallazgos' } },
+          { properties: { title: 'Duplicados' } },
+          { properties: { title: 'Sugerencias' } },
+        ],
+      }),
+    });
+
+    if (!createRes.ok) {
+      const err = await createRes.text();
+      console.error('Error creating audit sheet:', err);
+      res.status(502).json({ error: 'Could not create Google Sheet', detail: err });
+      return;
+    }
+
+    const sheet = await createRes.json();
+    const spreadsheetId = sheet.spreadsheetId;
+
+    const issueRows = (issues || []).map((i) => [
+      i.severity,
+      i.type,
+      i.title,
+      i.description,
+      i.impact,
+      i.suggestedAction,
+      i.data?.orderId || '',
+      i.data?.materialCode || '',
+      i.data?.project || '',
+      i.data?.supplier || '',
+      i.data?.expected ?? '',
+      i.data?.actual ?? '',
+    ]);
+
+    const duplicateRows = (duplicates || []).flatMap((g) =>
+      g.items.map((item: any) => [g.canonicalDescription, g.suggestedCode, item.code, item.description, item.occurrences])
+    );
+
+    const suggestionRows = (suggestions || []).map((s) => [
+      s.materialDescription,
+      s.currentCode || '',
+      s.suggestedCode,
+      s.suggestedPrice,
+      s.confidence,
+      s.reason,
+    ]);
+
+    const batch = {
+      valueInputOption: 'RAW',
+      data: [
+        {
+          range: 'Hallazgos!A1',
+          values: [
+            ['Severidad', 'Tipo', 'Título', 'Descripción', 'Impacto MXN', 'Acción sugerida', 'Orden', 'Código', 'Proyecto', 'Proveedor', 'Esperado', 'Actual'],
+            ...issueRows,
+          ],
+        },
+        {
+          range: 'Duplicados!A1',
+          values: [
+            ['Descripción canónica', 'Código sugerido', 'Código duplicado', 'Descripción duplicada', 'Ocurrencias'],
+            ...duplicateRows,
+          ],
+        },
+        {
+          range: 'Sugerencias!A1',
+          values: [
+            ['Descripción', 'Código actual', 'Código sugerido', 'Precio sugerido', 'Confianza', 'Razón'],
+            ...suggestionRows,
+          ],
+        },
+      ],
+    };
+
+    const writeRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(batch),
+      }
+    );
+
+    if (!writeRes.ok) {
+      const err = await writeRes.text();
+      console.error('Error writing audit sheet:', err);
+      res.status(502).json({ error: 'Sheet created but could not write data', detail: err });
+      return;
+    }
+
+    res.json({
+      spreadsheetId,
+      url: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
+      title: sheetTitle,
+    });
+  } catch (err) {
+    console.error('Export to sheets error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Export failed' });
+  }
+});
+
 // Configure Vite middleware in development or static serving inside production
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
