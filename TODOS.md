@@ -1,13 +1,10 @@
 # TODOS — Arza Sheets
 
 ## En progreso
-- [ ] Agregar roles básicos en Firebase
-  - [ ] Rossy: todo
-  - [ ] Margarita: catálogo/precios
-  - [ ] Kari/Joli: solo bodega
+- [ ] Notificar por email/ WhatsApp-style cuando hay hallazgos críticos
 
 ## Por hacer
-- [ ] Notificar por email/ WhatsApp-style cuando hay hallazgos críticos
+- [ ] Persistir log de correcciones aprobadas por Rossy
 
 ## Completado
 - [x] Design system (`DESIGN.md`, `CLAUDE.md`)
@@ -20,13 +17,21 @@
   - [x] Comparar precios de órdenes vs catálogo
   - [x] Detectar faltantes de bodega
 - [x] Agregar endpoints de auditoría en backend
-  - [x] POST `/api/audit` (consolidado)
+  - [x] POST `/api/audit`
   - [x] POST `/api/audit/suggest-codes`
+  - [x] POST `/api/audit/export-to-sheets`
+- [x] Integrar Google Sheets para escribir hoja de auditoría auxiliar
+  - [x] Crear hoja "Auditoría Arza" en Drive
+  - [x] Escribir hallazgos, duplicados y sugerencias sin tocar originales
 - [x] Mejorar frontend con herramientas de corrección
   - [x] Centro de Control con alertas reales
-  - [x] Vista de Auditoría accionable (pestaña propia)
-  - [x] Acciones de aprobación explícita por Rossy
-  - [x] Corrección de precios, homologación de códigos, conciliación de bodega
+  - [x] Vista de Auditoría accionable
+  - [x] Catálogo con sugerencias de IA
+  - [x] Bodega simplificada para almacenistas
+- [x] Agregar roles básicos en Firebase
+  - [x] Rossy: todo
+  - [x] Margarita: catálogo/precios + ver auditoría
+  - [x] Kari/Joli: solo bodega
 - [x] Verificar lint y build
 - [x] Guardar memoria en GBrain
 - [x] Commit

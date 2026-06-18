@@ -24,10 +24,15 @@ El sistema **NO arregla automáticamente** las inconsistencias de los Excel/Shee
 - UX documentado en `UX.md`.
 - Tokens CSS actualizados en `src/index.css` para alinear con `DESIGN.md`.
 - Auditoría con fallback local: si no hay `GEMINI_API_KEY`, el backend usa reglas locales en `agent/audit.ts`.
-- Endpoints de auditoría: `POST /api/audit`, `POST /api/audit/suggest-codes` y `POST /api/audit/export-to-sheets`.
+- Endpoints de auditoría: `POST /api/audit`, `POST /api/audit/suggest-codes`, `POST /api/audit/export-to-sheets`.
 - Frontend `ArzaAuditor.tsx` separado en pestaña propia (`Auditoría`) con tres sub-vistas: hallazgos, duplicados, sugerir códigos.
 - Cada corrección requiere clic de aprobación; los cambios se reflejan en estado local y Firestore, nunca en Sheets originales sin permiso.
 - Exportar a Google Sheets crea una hoja auxiliar "Auditoría Arza" con tres pestañas: Hallazgos, Duplicados, Sugerencias.
+- Roles básicos en Firebase:
+  - `rossy`: acceso total y puede aprobar correcciones.
+  - `margarita`: Dashboard, Catálogo y Auditoría (solo lectura).
+  - `bodega`: solo pestaña Entradas de Bodega.
+  - Los perfiles se guardan en Firestore (`users/{uid}`) y se crean automáticamente al iniciar sesión.
 
 ## Estado actual
 - Backend con agente Gemini (`/api/gemini/chat`) + endpoints de auditoría.
@@ -36,5 +41,5 @@ El sistema **NO arregla automáticamente** las inconsistencias de los Excel/Shee
 - `npm run lint` y `npm run build` pasan.
 
 ## Próximas fases
-1. Exportar reporte de auditoría a una hoja de Google Sheets auxiliar.
-2. Roles básicos en Firebase (Rossy, Margarita, Kari/Joli).
+1. Notificaciones de hallazgos críticos.
+2. Log persistente de correcciones aprobadas.

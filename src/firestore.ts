@@ -11,7 +11,8 @@ import {
   doc, 
   query, 
   orderBy,
-  Firestore 
+  Firestore,
+  getDoc
 } from 'firebase/firestore';
 import { initializeApp, getApps } from 'firebase/app';
 import firebaseConfig from '../firebase-applet-config.json';
@@ -25,6 +26,15 @@ try {
   db = getFirestore(app);
 } catch (err) {
   console.warn("Could not initialize firestore database client:", err);
+}
+
+export type UserRole = 'rossy' | 'margarita' | 'bodega';
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  name: string;
+  role: UserRole;
 }
 
 // Ensure database collection references work cleanly
@@ -102,4 +112,42 @@ export const saveWarehouseEntryToCloud = async (entry: WarehouseEntry): Promise<
     console.error("Error saving warehouse entry to Firestore:", err);
     return false;
   }
+};
+
+export const getUserRole = async (uid: string): Promise<UserProfile | null> => {
+  if (!db) return null;
+  try {
+    const docRef = doc(db, 'users', uid);
+    const snapshot = await getDoc(docRef);
+    if (!snapshot.exists()) return null;
+    return snapshot.data() as UserProfile;
+  } catch (err) {
+    console.error("Error fetching user role:", err);
+    return null;
+  }
+};
+
+export const setUserRole = async (profile: UserProfile): Promise<boolean> => {
+  if (!db) return false;
+  try {
+    const docRef = doc(db, 'users', profile.uid);
+    await setDoc(docRef, profile, { merge: true });
+    return true;
+  } catch (err) {
+    console.error("Error saving user role:", err);
+    return false;
+  }
+};
+
+export const ensureUserProfile = async (user: { uid: string; email: string | null; displayName: string | null }, defaultRole: UserRole = 'rossy'): Promise<UserProfile> => {
+  const existing = await getUserRole(user.uid);
+  if (existing) return existing;
+  const profile: UserProfile = {
+    uid: user.uid,
+    email: user.email || '',
+    name: user.displayName || user.email || 'Usuario',
+    role: defaultRole,
+  };
+  await setUserRole(profile);
+  return profile;
 };

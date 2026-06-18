@@ -34,12 +34,14 @@ import type {
   DuplicateGroup,
   CodeSuggestion,
 } from '../types';
+import type { UserRole } from '../firestore';
 
 interface ArzaAuditorProps {
   materials: Material[];
   orders: PurchaseOrder[];
   warehouse: WarehouseEntry[];
   token: string | null;
+  userRole?: UserRole;
   onUpdateOrder: (updatedOrder: PurchaseOrder) => void;
   onUpdateMaterial: (updatedMaterial: Material) => void;
   onBulkUpdateOrders: (updatedOrders: PurchaseOrder[]) => void;
@@ -75,6 +77,7 @@ export default function ArzaAuditor({
   orders,
   warehouse,
   token,
+  userRole = 'rossy',
   onUpdateOrder,
   onUpdateMaterial,
   onBulkUpdateOrders,
@@ -89,6 +92,7 @@ export default function ArzaAuditor({
   const [exporting, setExporting] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const canAct = userRole === 'rossy';
 
   const runAudit = async () => {
     setLoading(true);
@@ -492,7 +496,8 @@ export default function ArzaAuditor({
                               {issue.type === 'price_mismatch' && (
                                 <button
                                   onClick={() => handleFixPrice(issue)}
-                                  className="text-[11px] font-bold bg-arza-600 hover:bg-arza-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                                  disabled={!canAct}
+                                  className="text-[11px] font-bold bg-arza-600 hover:bg-arza-700 disabled:opacity-40 disabled:hover:bg-arza-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
                                 >
                                   <DollarSign className="w-3.5 h-3.5" />
                                   Aprobar corrección de precio
@@ -520,7 +525,8 @@ export default function ArzaAuditor({
                                         </div>
                                         <button
                                           onClick={() => handleFixOrphan(issue, mat)}
-                                          className="text-[10px] font-bold bg-arza-50 hover:bg-arza-600 hover:text-white text-arza-700 px-2.5 py-1 rounded-md transition-colors cursor-pointer shrink-0 border border-arza-200"
+                                          disabled={!canAct}
+                                          className="text-[10px] font-bold bg-arza-50 hover:bg-arza-600 hover:text-white disabled:opacity-40 disabled:hover:bg-arza-50 disabled:hover:text-arza-700 text-arza-700 px-2.5 py-1 rounded-md transition-colors cursor-pointer shrink-0 border border-arza-200"
                                         >
                                           Homologar
                                         </button>
@@ -529,7 +535,8 @@ export default function ArzaAuditor({
                                   </div>
                                   <button
                                     onClick={() => handleCreateMaterialForOrphan(issue)}
-                                    className="text-[10px] font-bold bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+                                    disabled={!canAct}
+                                    className="text-[10px] font-bold bg-white hover:bg-stone-50 disabled:opacity-40 text-stone-700 border border-stone-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
                                   >
                                     <Sparkles className="w-3.5 h-3.5" />
                                     Agregar orden como nuevo material maestro
@@ -540,7 +547,8 @@ export default function ArzaAuditor({
                               {issue.type === 'warehouse_discrepancy' && (
                                 <button
                                   onClick={() => handleFixWarehouse(issue)}
-                                  className="text-[11px] font-bold bg-arza-600 hover:bg-arza-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                                  disabled={!canAct}
+                                  className="text-[11px] font-bold bg-arza-600 hover:bg-arza-700 disabled:opacity-40 disabled:hover:bg-arza-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
                                 >
                                   <CheckCircle2 className="w-3.5 h-3.5" />
                                   Aprobar conciliación con bodega
@@ -595,7 +603,8 @@ export default function ArzaAuditor({
                       </div>
                       <button
                         onClick={() => handleMergeDuplicates(group)}
-                        className="shrink-0 text-[10px] font-bold bg-arza-600 hover:bg-arza-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                        disabled={!canAct}
+                        className="shrink-0 text-[10px] font-bold bg-arza-600 hover:bg-arza-700 disabled:opacity-40 disabled:hover:bg-arza-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
                       >
                         <GitMerge className="w-3.5 h-3.5" />
                         Fusionar
@@ -656,7 +665,8 @@ export default function ArzaAuditor({
                       </div>
                       <button
                         onClick={() => handleApplySuggestion(s)}
-                        className="shrink-0 text-[10px] font-bold bg-arza-600 hover:bg-arza-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                        disabled={!canAct}
+                        className="shrink-0 text-[10px] font-bold bg-arza-600 hover:bg-arza-700 disabled:opacity-40 disabled:hover:bg-arza-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
                       >
                         <CheckCircle2 className="w-3.5 h-3.5" />
                         Registrar
