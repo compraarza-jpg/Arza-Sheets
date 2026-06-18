@@ -499,19 +499,19 @@ export default function DriveBrowser({
       {!selectedFile && (
         <div className="space-y-2">
           <div className="flex justify-between items-center text-xs font-semibold">
-            <span className="text-slate-300">Explorador de Archivos y Carpetas de Google Drive 📂:</span>
-            {isLoading && <RotateCw className="w-3.5 h-3.5 text-teal-400 animate-spin" />}
+            <span className="text-stone-300">Explorador de Archivos y Carpetas de Google Drive 📂:</span>
+            {isLoading && <RotateCw className="w-3.5 h-3.5 text-arza-400 animate-spin" />}
           </div>
 
           {/* Breadcrumb navigator */}
-          <div className="flex flex-wrap items-center gap-1.5 bg-slate-950/40 p-2 rounded-lg border border-slate-800 text-[10px] font-mono text-slate-400">
+          <div className="flex flex-wrap items-center gap-1.5 bg-stone-900/40 p-2 rounded-lg border border-stone-800 text-[10px] font-mono text-stone-400">
             {breadcrumbs.map((crumb, idx) => (
               <React.Fragment key={crumb.id}>
-                {idx > 0 && <ChevronRight className="w-3 h-3 text-slate-600" />}
+                {idx > 0 && <ChevronRight className="w-3 h-3 text-stone-600" />}
                 <button
                   onClick={() => navigateToFolder(crumb.id, crumb.name)}
-                  className={`hover:text-teal-400 transition-colors uppercase cursor-pointer ${
-                    idx === breadcrumbs.length - 1 ? 'text-teal-300 font-bold' : ''
+                  className={`hover:text-arza-400 transition-colors uppercase cursor-pointer ${
+                    idx === breadcrumbs.length - 1 ? 'text-arza-300 font-bold' : ''
                   }`}
                   disabled={isLoading}
                 >
@@ -524,39 +524,39 @@ export default function DriveBrowser({
           {/* Search box */}
           <form onSubmit={handleSearch} className="flex gap-2">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-500" />
+              <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-stone-500" />
               <input
                 type="text"
                 placeholder="Buscar archivos en tu Drive..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                className="w-full bg-slate-950/60 border border-slate-800 focus:border-teal-500 rounded-lg pl-9 pr-4 py-2 text-xs text-white focus:outline-none placeholder-slate-600"
+                className="w-full bg-stone-900/60 border border-stone-800 focus:border-arza-500 rounded-lg pl-9 pr-4 py-2 text-xs text-white focus:outline-none placeholder-stone-600"
               />
             </div>
             <button
               type="submit"
               disabled={isLoading}
-              className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3.5 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
+              className="bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 px-3.5 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
             >
               Buscar
             </button>
           </form>
 
           {/* File grid */}
-          <div className="bg-slate-950/40 rounded-xl p-2.5 max-h-[180px] overflow-y-auto border border-slate-800/80 space-y-1 scrollbar-thin scrollbar-thumb-slate-800">
+          <div className="bg-stone-900/40 rounded-xl p-2.5 max-h-[180px] overflow-y-auto border border-stone-800/80 space-y-1 scrollbar-thin scrollbar-thumb-slate-800">
             {items.length > 0 ? (
               items.map(item => (
                 <div
                   key={item.id}
-                  className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-900/50 border border-transparent hover:border-slate-800/40 transition-all group"
+                  className="flex items-center justify-between p-2 rounded-lg hover:bg-stone-900/50 border border-transparent hover:border-stone-800/40 transition-all group"
                 >
                   <div className="flex items-center space-x-2.5 min-w-0">
                     {item.mimeType === 'application/vnd.google-apps.folder' ? (
                       <Folder className="w-4 h-4 text-amber-400 shrink-0" />
                     ) : (
-                      <FileSpreadsheet className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <FileSpreadsheet className="w-4 h-4 text-arza-400 shrink-0" />
                     )}
-                    <span className="text-[11px] font-medium text-slate-300 group-hover:text-white truncate max-w-[200px]">
+                    <span className="text-[11px] font-medium text-stone-300 group-hover:text-white truncate max-w-[200px]">
                       {item.name}
                     </span>
                   </div>
@@ -565,14 +565,14 @@ export default function DriveBrowser({
                     <button
                       onClick={() => navigateToFolder(item.id, item.name)}
                       disabled={isLoading}
-                      className="text-[9px] font-bold text-teal-400 hover:text-teal-300 px-2 py-1 rounded bg-teal-500/10 cursor-pointer border border-teal-500/20"
+                      className="text-[9px] font-bold text-arza-400 hover:text-arza-300 px-2 py-1 rounded bg-arza-500/10 cursor-pointer border border-arza-500/20"
                     >
                       Abrir Carpeta
                     </button>
                   ) : (
                     <button
                       onClick={() => selectFile(item)}
-                      className="text-[9px] font-bold text-slate-950 hover:bg-emerald-400 bg-emerald-500 px-2.5 py-1 rounded transition-colors cursor-pointer"
+                      className="text-[9px] font-bold text-stone-900 hover:bg-arza-400 bg-arza-500 px-2.5 py-1 rounded transition-colors cursor-pointer"
                     >
                       Seleccionar
                     </button>
@@ -580,7 +580,7 @@ export default function DriveBrowser({
                 </div>
               ))
             ) : (
-              <div className="text-center py-6 text-xs text-slate-500">
+              <div className="text-center py-6 text-xs text-stone-500">
                 {isLoading ? "Consultando archivos de Google Drive..." : "Unidad vacía. No encontramos archivos ni carpetas."}
               </div>
             )}
@@ -590,21 +590,21 @@ export default function DriveBrowser({
 
       {/* Selected File Wizard */}
       {selectedFile && !isMappingMode && (
-        <div className="bg-slate-950/60 p-4 rounded-xl border border-teal-500/20 space-y-3.5">
+        <div className="bg-stone-900/60 p-4 rounded-xl border border-arza-500/20 space-y-3.5">
           <div className="flex justify-between items-start gap-4">
             <div className="min-w-0">
-              <span className="text-[8px] tracking-wider uppercase bg-teal-400/10 text-teal-300 border border-teal-400/20 px-2 py-0.5 rounded-full font-mono font-semibold">
+              <span className="text-[8px] tracking-wider uppercase bg-arza-400/10 text-arza-300 border border-arza-400/20 px-2 py-0.5 rounded-full font-mono font-semibold">
                 Archivo Seleccionado para Mapear
               </span>
               <h5 className="text-[12px] font-bold text-white flex items-center gap-1.5 mt-1.5 truncate">
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                <FileSpreadsheet className="w-3.5 h-3.5 text-arza-400" />
                 {selectedFile.name}
               </h5>
-              <p className="text-[9px] text-slate-500 truncate font-mono mt-0.5">ID: {selectedFile.id}</p>
+              <p className="text-[9px] text-stone-500 truncate font-mono mt-0.5">ID: {selectedFile.id}</p>
             </div>
             <button
               onClick={() => setSelectedFile(null)}
-              className="text-[10px] text-slate-400 hover:text-white flex items-center gap-0.5 cursor-pointer"
+              className="text-[10px] text-stone-400 hover:text-white flex items-center gap-0.5 cursor-pointer"
             >
               <ArrowLeft className="w-3 h-3" /> Atrás
             </button>
@@ -613,16 +613,16 @@ export default function DriveBrowser({
           {/* Select Sheet Tab inside file */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-slate-400">Pestaña a Importar:</label>
+              <label className="text-[10px] font-bold text-stone-400">Pestaña a Importar:</label>
               {isLoadingSheets ? (
-                <div className="flex items-center gap-1.5 text-[11px] text-slate-400 py-2">
-                  <RotateCw className="w-3.5 h-3.5 animate-spin text-teal-400" /> Cargando estructura...
+                <div className="flex items-center gap-1.5 text-[11px] text-stone-400 py-2">
+                  <RotateCw className="w-3.5 h-3.5 animate-spin text-arza-400" /> Cargando estructura...
                 </div>
               ) : (
                 <select
                   value={selectedSheet}
                   onChange={e => setSelectedSheet(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 text-xs text-white rounded-lg p-2 focus:outline-none focus:border-teal-500 cursor-pointer"
+                  className="w-full bg-stone-900 border border-stone-800 text-xs text-white rounded-lg p-2 focus:outline-none focus:border-arza-500 cursor-pointer"
                 >
                   {availableSheets.map(s => (
                     <option key={s} value={s}>{s}</option>
@@ -632,7 +632,7 @@ export default function DriveBrowser({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-slate-400">Convertir y Cargar como:</label>
+              <label className="text-[10px] font-bold text-stone-400">Convertir y Cargar como:</label>
               <div className="grid grid-cols-3 gap-1.5">
                 {[
                   { value: 'materials', label: 'Catálogo' },
@@ -644,8 +644,8 @@ export default function DriveBrowser({
                     onClick={() => setImportType(opt.value as any)}
                     className={`py-2 px-1 text-[10px] font-semibold border rounded-lg cursor-pointer transition-all ${
                       importType === opt.value
-                        ? 'bg-teal-500 border-teal-400 text-slate-950 font-bold'
-                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                        ? 'bg-arza-500 border-arza-400 text-stone-900 font-bold'
+                        : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
                     }`}
                   >
                     {opt.label}
@@ -655,8 +655,8 @@ export default function DriveBrowser({
             </div>
           </div>
 
-          <div className="bg-teal-500/5 p-3 rounded-lg border border-teal-500/10 text-[11px] text-slate-300 flex items-start gap-2">
-            <Sparkles className="w-4 h-4 text-teal-400 shrink-0 mt-0.5" />
+          <div className="bg-arza-500/5 p-3 rounded-lg border border-arza-500/10 text-[11px] text-stone-300 flex items-start gap-2">
+            <Sparkles className="w-4 h-4 text-arza-400 shrink-0 mt-0.5" />
             <div>
               <span className="font-bold text-white block">Auto-Mapeo Inteligente con IA de Arza</span>
               Selecciona tu pestaña y pulsa abajo. Analizaremos automáticamente la primera fila para emparejar campos clave como códigos, cantidades y observaciones sin desacomodar nada.
@@ -666,9 +666,9 @@ export default function DriveBrowser({
           <button
             onClick={startMappingWizard}
             disabled={isLoadingSheets || !selectedSheet}
-            className="w-full py-2 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-slate-950 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 shadow-lg shadow-teal-500/15 cursor-pointer disabled:opacity-50"
+            className="w-full py-2 bg-gradient-to-r from-arza-600 to-arza-500 hover:from-arza-500 hover:to-arza-400 text-stone-900 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 shadow-lg shadow-arza-500/15 cursor-pointer disabled:opacity-50"
           >
-            <Sparkles className="w-3.5 h-3.5 text-slate-950 animate-pulse" />
+            <Sparkles className="w-3.5 h-3.5 text-stone-900 animate-pulse" />
             Siguiente: Mapear Columnas de {importType === 'materials' ? 'Catálogo' : importType === 'orders' ? 'Órdenes de Compra' : 'Bodega'}
           </button>
         </div>
@@ -676,28 +676,28 @@ export default function DriveBrowser({
 
       {/* Auto-Mapper Column Matching Screen */}
       {selectedFile && isMappingMode && (
-        <div className="bg-slate-950 p-4 rounded-xl border border-teal-500/30 space-y-4">
+        <div className="bg-stone-900 p-4 rounded-xl border border-arza-500/30 space-y-4">
           <div className="flex justify-between items-start gap-4">
             <div>
-              <span className="text-[8px] tracking-wider uppercase bg-emerald-400/10 text-emerald-300 border border-emerald-400/20 px-2 py-0.5 rounded-full font-mono font-semibold">
+              <span className="text-[8px] tracking-wider uppercase bg-arza-400/10 text-arza-300 border border-arza-400/20 px-2 py-0.5 rounded-full font-mono font-semibold">
                 Paso 2: Mapeador de Columnas Real
               </span>
               <h5 className="text-[12px] font-bold text-white flex items-center gap-1.5 mt-1.5">
-                <SlidersHorizontal className="w-3.5 h-3.5 text-teal-400" />
+                <SlidersHorizontal className="w-3.5 h-3.5 text-arza-400" />
                 Emparejar columnas de &quot;{selectedSheet}&quot;
               </h5>
-              <p className="text-[10px] text-slate-400 mt-0.5">Asigna qué columna de tu Excel corresponde a los parámetros del sistema.</p>
+              <p className="text-[10px] text-stone-400 mt-0.5">Asigna qué columna de tu Excel corresponde a los parámetros del sistema.</p>
             </div>
             <button
               onClick={() => setIsMappingMode(false)}
-              className="text-[10px] text-slate-400 hover:text-white flex items-center gap-0.5 cursor-pointer"
+              className="text-[10px] text-stone-400 hover:text-white flex items-center gap-0.5 cursor-pointer"
             >
               <ArrowLeft className="w-3 h-3" /> Atrás
             </button>
           </div>
 
           {/* Mapping settings */}
-          <div className="space-y-3 p-3 bg-slate-900 rounded-lg border border-slate-800 max-h-[220px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-800">
+          <div className="space-y-3 p-3 bg-stone-900 rounded-lg border border-stone-800 max-h-[220px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-800">
             {importType === 'materials' && (
               <div className="space-y-3">
                 {[
@@ -706,15 +706,15 @@ export default function DriveBrowser({
                   { key: 'unit', label: 'Unidad de Medida', desc: 'PZ, SACO, KG, etc.' },
                   { key: 'price', label: 'Precio Pactado * (Monto)', desc: 'Costo unitario acordado' }
                 ].map(field => (
-                  <div key={field.key} className="flex flex-col sm:flex-row justify-between sm:items-center gap-2.5 pb-2.5 last:pb-0 last:border-b-0 border-b border-slate-800">
+                  <div key={field.key} className="flex flex-col sm:flex-row justify-between sm:items-center gap-2.5 pb-2.5 last:pb-0 last:border-b-0 border-b border-stone-800">
                     <div className="max-w-[200px]">
-                      <span className="text-[11px] font-bold text-slate-200 block">{field.label}</span>
-                      <span className="text-[9px] text-slate-500 block leading-tight">{field.desc}</span>
+                      <span className="text-[11px] font-bold text-stone-200 block">{field.label}</span>
+                      <span className="text-[9px] text-stone-500 block leading-tight">{field.desc}</span>
                     </div>
                     <select
                       value={mappings[field.key] !== undefined ? mappings[field.key] : -1}
                       onChange={e => handleMappingChange(field.key, Number(e.target.value))}
-                      className="bg-slate-950 border border-slate-800 rounded-lg text-[11px] p-2 text-white sm:w-[160px] focus:outline-none focus:border-teal-500 cursor-pointer"
+                      className="bg-stone-900 border border-stone-800 rounded-lg text-[11px] p-2 text-white sm:w-[160px] focus:outline-none focus:border-arza-500 cursor-pointer"
                     >
                       <option value={-1}>-- No asignar --</option>
                       {headers.map((h, i) => (
@@ -743,15 +743,15 @@ export default function DriveBrowser({
                   { key: 'observation', label: 'Comentarios / Observaciones', desc: 'Notas de disconformidad o ajustes' },
                   { key: 'date', label: 'Fecha de Emisión', desc: 'Momento de emisión de la orden' }
                 ].map(field => (
-                  <div key={field.key} className="flex flex-col sm:flex-row justify-between sm:items-center gap-2.5 pb-2.5 last:pb-0 last:border-b-0 border-b border-slate-800">
+                  <div key={field.key} className="flex flex-col sm:flex-row justify-between sm:items-center gap-2.5 pb-2.5 last:pb-0 last:border-b-0 border-b border-stone-800">
                     <div className="max-w-[200px]">
-                      <span className="text-[11px] font-bold text-slate-200 block">{field.label}</span>
-                      <span className="text-[9px] text-slate-500 block leading-tight">{field.desc}</span>
+                      <span className="text-[11px] font-bold text-stone-200 block">{field.label}</span>
+                      <span className="text-[9px] text-stone-500 block leading-tight">{field.desc}</span>
                     </div>
                     <select
                       value={mappings[field.key] !== undefined ? mappings[field.key] : -1}
                       onChange={e => handleMappingChange(field.key, Number(e.target.value))}
-                      className="bg-slate-950 border border-slate-800 rounded-lg text-[11px] p-2 text-white sm:w-[160px] focus:outline-none focus:border-teal-500 cursor-pointer"
+                      className="bg-stone-900 border border-stone-800 rounded-lg text-[11px] p-2 text-white sm:w-[160px] focus:outline-none focus:border-arza-500 cursor-pointer"
                     >
                       <option value={-1}>-- No asignar (Opcional) --</option>
                       {headers.map((h, i) => (
@@ -776,15 +776,15 @@ export default function DriveBrowser({
                   { key: 'date', label: 'Fecha de Entrada', desc: 'Día que ingresó a la bodega' },
                   { key: 'observation', label: 'Notas / Observaciones', desc: 'Notas de faltantes o averías' }
                 ].map(field => (
-                  <div key={field.key} className="flex flex-col sm:flex-row justify-between sm:items-center gap-2.5 pb-2.5 last:pb-0 last:border-b-0 border-b border-slate-800">
+                  <div key={field.key} className="flex flex-col sm:flex-row justify-between sm:items-center gap-2.5 pb-2.5 last:pb-0 last:border-b-0 border-b border-stone-800">
                     <div className="max-w-[200px]">
-                      <span className="text-[11px] font-bold text-slate-200 block">{field.label}</span>
-                      <span className="text-[9px] text-slate-500 block leading-tight">{field.desc}</span>
+                      <span className="text-[11px] font-bold text-stone-200 block">{field.label}</span>
+                      <span className="text-[9px] text-stone-500 block leading-tight">{field.desc}</span>
                     </div>
                     <select
                       value={mappings[field.key] !== undefined ? mappings[field.key] : -1}
                       onChange={e => handleMappingChange(field.key, Number(e.target.value))}
-                      className="bg-slate-950 border border-slate-800 rounded-lg text-[11px] p-2 text-white sm:w-[160px] focus:outline-none focus:border-teal-500 cursor-pointer"
+                      className="bg-stone-900 border border-stone-800 rounded-lg text-[11px] p-2 text-white sm:w-[160px] focus:outline-none focus:border-arza-500 cursor-pointer"
                     >
                       <option value={-1}>-- No asignar --</option>
                       {headers.map((h, i) => (
@@ -797,9 +797,9 @@ export default function DriveBrowser({
             )}
           </div>
 
-          <div className="bg-slate-900 border border-slate-850 p-3 rounded-lg text-[11px] text-slate-400 space-y-1">
-            <div className="font-bold text-slate-300 flex items-center gap-1">
-              <Info className="w-3.5 h-3.5 text-teal-400" />
+          <div className="bg-stone-900 border border-stone-800 p-3 rounded-lg text-[11px] text-stone-400 space-y-1">
+            <div className="font-bold text-stone-300 flex items-center gap-1">
+              <Info className="w-3.5 h-3.5 text-arza-400" />
               Sugerencia de Procesamiento:
             </div>
             <span>Las celdas con errores o vacías se limpian automáticamente de fondo para prevenir sobregasto y asegurar de inmediato que las columnas de Margarita cuadren sin errores.</span>
@@ -809,14 +809,14 @@ export default function DriveBrowser({
           <div className="flex gap-2.5">
             <button
               onClick={() => setIsMappingMode(false)}
-              className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold py-2.5 rounded-lg border border-slate-700 cursor-pointer transition-colors"
+              className="flex-1 bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-semibold py-2.5 rounded-lg border border-stone-700 cursor-pointer transition-colors"
             >
               Cancelar
             </button>
             <button
               onClick={executeImport}
               disabled={isImporting}
-              className="flex-1 bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-extrabold py-2.5 rounded-lg flex items-center justify-center gap-1.5 shadow-lg shadow-teal-500/10 cursor-pointer disabled:opacity-50"
+              className="flex-1 bg-arza-500 hover:bg-arza-400 text-stone-900 text-xs font-extrabold py-2.5 rounded-lg flex items-center justify-center gap-1.5 shadow-lg shadow-arza-500/10 cursor-pointer disabled:opacity-50"
             >
               {isImporting ? (
                 <>
