@@ -1,0 +1,31 @@
+name: Package for AI Studio
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create AI Studio ZIP
+        run: |
+          zip -r Arza-Sheets-ai-studio.zip . \
+            -x '*.git*' \
+            -x 'node_modules/*' \
+            -x 'dist/*' \
+            -x '.github/*'
+
+      - name: Upload AI Studio package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arza-Sheets-ai-studio
+          path: Arza-Sheets-ai-studio.zip
+          retention-days: 30
