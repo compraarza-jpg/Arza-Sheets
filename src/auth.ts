@@ -22,7 +22,13 @@ try {
 }
 
 let isSigningIn = false;
-let cachedAccessToken: string | null = null;
+let cachedAccessToken: string | null = (() => {
+  try {
+    return localStorage.getItem('arza_google_access_token');
+  } catch (e) {
+    return null;
+  }
+})();
 
 export const initAuth = (
   onAuthSuccess?: (user: any, token: string) => void,
@@ -38,10 +44,16 @@ export const initAuth = (
         if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
       } else if (!isSigningIn) {
         cachedAccessToken = null;
+        try {
+          localStorage.removeItem('arza_google_access_token');
+        } catch (e) {}
         if (onAuthFailure) onAuthFailure();
       }
     } else {
       cachedAccessToken = null;
+      try {
+        localStorage.removeItem('arza_google_access_token');
+      } catch (e) {}
       if (onAuthFailure) onAuthFailure();
     }
   });
@@ -51,6 +63,9 @@ export const googleSignIn = async (): Promise<{ user: any; accessToken: string }
   if (!auth) {
     // Return a perfect simulated authentication in trial sandbox
     cachedAccessToken = "simulated-token-abc-123";
+    try {
+      localStorage.setItem('arza_google_access_token', cachedAccessToken);
+    } catch (e) {}
     const simulatedUser = {
       uid: "simulated-rossy-lares",
       displayName: "Rossy Lares Morales",
@@ -68,6 +83,9 @@ export const googleSignIn = async (): Promise<{ user: any; accessToken: string }
     }
 
     cachedAccessToken = credential.accessToken;
+    try {
+      localStorage.setItem('arza_google_access_token', cachedAccessToken);
+    } catch (e) {}
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
     console.error('Sign in error:', error);
@@ -82,4 +100,7 @@ export const logout = async () => {
     await auth.signOut();
   }
   cachedAccessToken = null;
+  try {
+    localStorage.removeItem('arza_google_access_token');
+  } catch (e) {}
 };

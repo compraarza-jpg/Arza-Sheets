@@ -26,7 +26,9 @@ import {
   AlertTriangle, 
   HelpCircle,
   Copy,
-  ShieldCheck
+  ShieldCheck,
+  Lock,
+  ShieldAlert
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -448,13 +450,12 @@ He activado los permisos para mapear tu hoja de cálculo real de Arza en Google 
     setUser(null);
     setToken(null);
     setIsSandbox(true);
-    showToast("Volviendo a modo de simulación Sandbox.");
-    setMaterials(INITIAL_MATERIALS);
-    setOrders(INITIAL_ORDERS);
-    setWarehouse(INITIAL_WAREHOUSE);
+    showToast("Sesión de Google Drive finalizada. Copia Cloud local activa.");
     setSpreadsheets([]);
     setSelectedSpreadsheetId(null);
     setSelectedSpreadsheetName(null);
+    // Reload from cloud database to ensure user's custom edits remain intact
+    await syncFromFirestore();
   };
 
   // Chat submit process
@@ -580,9 +581,7 @@ He activado los permisos para mapear tu hoja de cálculo real de Arza en Google 
       };
 
       setOrders(prev => [newOrder, ...prev]);
-      if (!isSandbox) {
-        saveOrderToCloud(newOrder);
-      }
+      saveOrderToCloud(newOrder);
       showToast(`¡Arza Sheets Actualizado! Creada exitosamente la Orden ${orderId}.`);
     }
 
@@ -596,9 +595,7 @@ He activado los permisos para mapear tu hoja de cálculo real de Arza en Google 
           if (!exists) {
             const newMaterial = { code: m.suggestedCode, description: m.name, unit: 'PZ', price: m.price };
             setMaterials(prev => [newMaterial, ...prev]);
-            if (!isSandbox) {
-              saveMaterialToCloud(newMaterial);
-            }
+            saveMaterialToCloud(newMaterial);
           }
         });
       }
@@ -620,9 +617,7 @@ He activado los permisos para mapear tu hoja de cálculo real de Arza en Google 
               status: stat,
               observation: payload.observation || `Recibido parcial de ${received} unidades.`
             };
-            if (!isSandbox) {
-              saveOrderToCloud(updatedOrder);
-            }
+            saveOrderToCloud(updatedOrder);
             return updatedOrder;
           }
           return o;
@@ -646,9 +641,7 @@ He activado los permisos para mapear tu hoja de cálculo real de Arza en Google 
           observation: payload.observation || 'Recibido parcial.'
         };
         setWarehouse(prev => [newEntry, ...prev]);
-        if (!isSandbox) {
-          saveWarehouseEntryToCloud(newEntry);
-        }
+        saveWarehouseEntryToCloud(newEntry);
       }
 
       showToast(`¡Recibo de Bodega Cargado! Estado de orden ${payload.orderId} actualizado.`);
@@ -667,25 +660,19 @@ He activado los permisos para mapear tu hoja de cálculo real de Arza en Google 
   // Callback functions for ArzaAuditor
   const handleUpdateOrder = (updatedOrder: PurchaseOrder) => {
     setOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
-    if (!isSandbox) {
-      saveOrderToCloud(updatedOrder);
-    }
+    saveOrderToCloud(updatedOrder);
   };
 
   const handleUpdateMaterial = (updatedMaterial: Material) => {
     setMaterials(prev => prev.map(m => m.code === updatedMaterial.code ? updatedMaterial : m));
-    if (!isSandbox) {
-      saveMaterialToCloud(updatedMaterial);
-    }
+    saveMaterialToCloud(updatedMaterial);
   };
 
   const handleBulkUpdateOrders = (updatedOrders: PurchaseOrder[]) => {
     setOrders(updatedOrders);
-    if (!isSandbox) {
-      updatedOrders.forEach(o => {
-        saveOrderToCloud(o);
-      });
-    }
+    updatedOrders.forEach(o => {
+      saveOrderToCloud(o);
+    });
   };
 
   // Quick Action: Manual Order Form Add
