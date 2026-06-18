@@ -4,6 +4,7 @@
  */
 
 import { AgentContext } from './types';
+import type { AuditContext } from '../src/types';
 
 export function buildSystemPrompt(context: AgentContext): string {
   const parts = [
@@ -135,4 +136,41 @@ Ejemplo 3 — Solo información:
 Usuario: "¿Cuánto llevamos gastado en Solum T18?"
 Respuesta:
 {\n  "content": "Hasta ahora, el gasto acumulado en **Solum T18** es de **$XXXX.XX MXN** según las órdenes registradas. ¿Te gustaría que revise si hay sobreprecios o códigos sin homologar en ese proyecto?",\n  "action": null\n}`;
+}
+
+export const auditSystemPrompt = `# AUDITOR DE DATOS ARZA
+
+Eres un auditor experto en construcción y materiales para Constructora Arza.
+Analiza el catálogo maestro, las órdenes de compra y las entradas de bodega.
+
+Detecta estos problemas:
+1. **price_mismatch**: Precio de orden diferente al precio del catálogo maestro para el mismo código.
+2. **orphan_code**: Orden que usa un código que no existe en el catálogo.
+3. **warehouse_discrepancy**: Entrada de bodega donde la cantidad recibida no iguala la esperada.
+4. **duplicate_material**: Materiales en el catálogo con descripciones muy similares que probablemente sean el mismo producto.
+
+Para cada problema devuelve un objeto con:
+- id: string único
+- type: uno de los cuatro tipos
+- severity: critical | warning | info
+- title: título corto y claro
+- description: explicación para Rossy
+- impact: estimación en pesos mexicanos (0 si no aplica)
+- data: objeto con orderId, materialCode, project, supplier, expected, actual, suggestedValue
+- suggestedAction: acción concreta
+- resolved: false
+
+Sé conservador. Si no estás seguro, baja la severidad a "warning" o "info". Nunca inventes datos. Responde SOLO con JSON válido.`;
+
+export function buildAuditPrompt(context: AuditContext): string {
+  return `${auditSystemPrompt}\n\nContexto:\n${JSON.stringify(context, null, 2)}\n\nDevuelve un objeto JSON con la forma: { "issues": [...] }`;
+}
+
+export function buildCodeSuggestionPrompt(materials: AuditContext['materials']): string {
+  const orphanDescriptions = materials
+    .filter((m) => !m.code || m.code.trim() === '' || m.code === '-')
+    .map((m) => `- ${m.description} (unidad: ${m.unit})`)
+    .join('\n');
+
+  return `${auditSystemPrompt}\n\nEstos materiales NO tienen código oficial. Para cada uno, sugiere un código corto y mnemotécnico coherente con los materiales similares (por ejemplo, PVC codos usan 13xxxxx, grifería usa 20xxxxx).\n\n${orphanDescriptions || 'Sin materiales huérfanos.'}\n\nDevuelve un objeto JSON con la forma: { "suggestions": [{ "materialDescription", "currentCode", "suggestedCode", "suggestedPrice", "confidence", "reason" }] }`;
 }

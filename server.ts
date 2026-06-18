@@ -9,6 +9,8 @@ import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import { z } from 'zod';
 import { runAgent, AgentContext, AgentMessage } from './agent/index';
+import { runAudit, suggestCodes } from './agent/audit-engine';
+import type { Material, PurchaseOrder, WarehouseEntry } from './src/types';
 
 dotenv.config();
 
@@ -116,6 +118,41 @@ app.post('/api/gemini/chat', async (req, res) => {
 app.get('/api/health', (_req, res) => {
   const hasKey = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'MY_GEMINI_API_KEY');
   res.json({ status: 'ok', agentMode: hasKey ? 'live' : 'demo' });
+});
+
+// Audit endpoints
+app.post('/api/audit', async (req, res) => {
+  try {
+    const { materials, orders, warehouse } = req.body as {
+      materials: Material[];
+      orders: PurchaseOrder[];
+      warehouse: WarehouseEntry[];
+    };
+    if (!Array.isArray(materials) || !Array.isArray(orders)) {
+      res.status(400).json({ error: 'materials and orders arrays are required' });
+      return;
+    }
+    const result = await runAudit({ materials, orders, warehouse: warehouse || [] });
+    res.json(result);
+  } catch (err) {
+    console.error('Audit error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Audit failed' });
+  }
+});
+
+app.post('/api/audit/suggest-codes', async (req, res) => {
+  try {
+    const { materials } = req.body as { materials: Material[] };
+    if (!Array.isArray(materials)) {
+      res.status(400).json({ error: 'materials array is required' });
+      return;
+    }
+    const result = await suggestCodes(materials);
+    res.json(result);
+  } catch (err) {
+    console.error('Suggest codes error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Suggestion failed' });
+  }
 });
 
 // Configure Vite middleware in development or static serving inside production

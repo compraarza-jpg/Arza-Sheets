@@ -73,7 +73,7 @@ export default function App() {
   const [warehouse, setWarehouse] = useState<WarehouseEntry[]>(INITIAL_WAREHOUSE);
 
   // Active View Tabs
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'catalogo' | 'ordenes' | 'bodega'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'catalogo' | 'ordenes' | 'bodega' | 'auditoria'>('dashboard');
   
   // Filtering & Searches
   const [materialSearch, setMaterialSearch] = useState('');
@@ -664,7 +664,13 @@ He activado los permisos para mapear tu hoja de cálculo real de Arza en Google 
   };
 
   const handleUpdateMaterial = (updatedMaterial: Material) => {
-    setMaterials(prev => prev.map(m => m.code === updatedMaterial.code ? updatedMaterial : m));
+    setMaterials(prev => {
+      const exists = prev.some(m => m.code === updatedMaterial.code);
+      if (exists) {
+        return prev.map(m => m.code === updatedMaterial.code ? updatedMaterial : m);
+      }
+      return [updatedMaterial, ...prev];
+    });
     saveMaterialToCloud(updatedMaterial);
   };
 
@@ -1196,6 +1202,19 @@ He activado los permisos para mapear tu hoja de cálculo real de Arza en Google 
                 <span className="hidden md:inline">Entradas de Bodega</span>
                 <span className="md:hidden">Bodega</span>
               </button>
+
+              <button 
+                onClick={() => { setActiveTab('auditoria'); setNewOrderForm(false); }}
+                className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer relative ${
+                  activeTab === 'auditoria' 
+                    ? 'bg-surface text-arza-800 shadow-xs border border-border' 
+                    : 'text-stone-500 hover:bg-stone-100 hover:text-stone-700'
+                }`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Auditoría</span>
+                <span className="md:hidden">Auditar</span>
+              </button>
             </div>
 
             {/* Quick manual entry or reload actions inside header tab strip */}
@@ -1361,17 +1380,6 @@ He activado los permisos para mapear tu hoja de cálculo real de Arza en Google 
                       ))}
                     </div>
                   </div>
-
-                  {/* Real-time Central Auditor Dashboard Section */}
-                  <ArzaAuditor 
-                    materials={materials} 
-                    orders={orders} 
-                    warehouse={warehouse} 
-                    onUpdateOrder={handleUpdateOrder}
-                    onUpdateMaterial={handleUpdateMaterial}
-                    onBulkUpdateOrders={handleBulkUpdateOrders}
-                    showToast={showToast}
-                  />
 
                   {/* Google Drive & Sheets Live Integration Panel */}
                   <div className="bg-stone-50 border border-stone-200 rounded-2xl p-5 space-y-4 shadow-2xs">
@@ -1773,6 +1781,37 @@ He activado los permisos para mapear tu hoja de cálculo real de Arza en Google 
                         showToast(`¡Entrada ${entry.id} reconciliada de conformidad!`);
                       }
                     }}
+                    showToast={showToast}
+                  />
+                </motion.div>
+              )}
+
+              {/* TAB 5: Audit and correction tools */}
+              {activeTab === 'auditoria' && (
+                <motion.div 
+                  key="aud"
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -15 }}
+                  className="space-y-4"
+                >
+                  <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 shrink-0 select-none">
+                    <h3 className="text-sm font-bold text-stone-800 flex items-center">
+                      <ShieldCheck className="w-4 h-4 mr-1.5 text-arza-600" />
+                      Auditoría y Correcciones
+                    </h3>
+                    <p className="text-xs text-stone-500">
+                      Hallazgos del agente. Rossy aprueba cada cambio; los Excel fuente nunca se modifican solos.
+                    </p>
+                  </div>
+
+                  <ArzaAuditor 
+                    materials={materials} 
+                    orders={orders} 
+                    warehouse={warehouse} 
+                    onUpdateOrder={handleUpdateOrder}
+                    onUpdateMaterial={handleUpdateMaterial}
+                    onBulkUpdateOrders={handleBulkUpdateOrders}
                     showToast={showToast}
                   />
                 </motion.div>

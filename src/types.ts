@@ -57,3 +57,44 @@ export interface SpreadsheetInfo {
   title: string;
   url: string;
 }
+
+export interface AuditIssue {
+  id: string;
+  type: 'price_mismatch' | 'orphan_code' | 'warehouse_discrepancy' | 'duplicate_material';
+  severity: 'critical' | 'warning' | 'info';
+  title: string;
+  description: string;
+  impact: number;
+  data: {
+    orderId?: string;
+    materialCode?: string;
+    project?: string;
+    supplier?: string;
+    expected?: number;
+    actual?: number;
+    suggestedValue?: number | string;
+  };
+  suggestedAction: string;
+  resolved: boolean;
+}
+
+export interface CodeSuggestion {
+  materialDescription: string;
+  currentCode?: string;
+  suggestedCode: string;
+  suggestedPrice: number;
+  confidence: 'high' | 'medium' | 'low';
+  reason: string;
+}
+
+export interface DuplicateGroup {
+  canonicalDescription: string;
+  suggestedCode: string;
+  items: Array<{ code: string; description: string; occurrences: number }>;
+}
+
+export interface AuditContext {
+  materials: Material[];
+  orders: PurchaseOrder[];
+  warehouse: WarehouseEntry[];
+}
