@@ -1,217 +1,398 @@
-import React, { useState } from 'react';
-import { 
-  ShieldCheck, 
-  AlertOctagon, 
-  Sparkles, 
-  CornerDownRight, 
-  FileCheck2, 
-  TrendingDown, 
-  Flame, 
-  Send,
-  HelpCircle,
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ShieldCheck,
+  AlertOctagon,
+  Sparkles,
+  FileCheck2,
+  Layers,
+  Archive,
+  RefreshCw,
+  AlertTriangle,
+  CheckCircle2,
   Copy,
   Check,
-  CheckCircle2,
-  Trash2,
-  AlertTriangle,
-  RefreshCw,
-  TrendingUp,
   MessageSquare,
-  Scale,
+  FileSpreadsheet,
+  Search,
+  ChevronDown,
+  ChevronUp,
+  Lightbulb,
+  GitMerge,
   DollarSign,
-  Layers,
-  Archive
 } from 'lucide-react';
-import { Material, PurchaseOrder, WarehouseEntry } from '../types';
+import { motion, AnimatePresence } from 'motion/react';
+import type {
+  Material,
+  PurchaseOrder,
+  WarehouseEntry,
+  AuditIssue,
+  DuplicateGroup,
+  CodeSuggestion,
+} from '../types';
+import type { UserRole } from '../firestore';
+import { saveAuditLog, createCriticalNotification } from '../firestore';
 
 interface ArzaAuditorProps {
   materials: Material[];
   orders: PurchaseOrder[];
   warehouse: WarehouseEntry[];
+  token: string | null;
+  user: any;
+  userRole?: UserRole;
   onUpdateOrder: (updatedOrder: PurchaseOrder) => void;
   onUpdateMaterial: (updatedMaterial: Material) => void;
   onBulkUpdateOrders: (updatedOrders: PurchaseOrder[]) => void;
   showToast: (msg: string) => void;
 }
 
+type AuditTab = 'issues' | 'duplicates' | 'codes';
+
+function severityBadge(severity: AuditIssue['severity']) {
+  switch (severity) {
+    case 'critical':
+      return 'bg-rose-100 text-rose-700 border-rose-200';
+    case 'warning':
+      return 'bg-amber-100 text-amber-700 border-amber-200';
+    default:
+      return 'bg-stone-100 text-stone-600 border-stone-200';
+  }
+}
+
+function severityLabel(severity: AuditIssue['severity']) {
+  switch (severity) {
+    case 'critical':
+      return 'Crítico';
+    case 'warning':
+      return 'Advertencia';
+    default:
+      return 'Informativo';
+  }
+}
+
 export default function ArzaAuditor({
   materials,
   orders,
   warehouse,
+  token,
+  user,
+  userRole = 'rossy',
   onUpdateOrder,
   onUpdateMaterial,
   onBulkUpdateOrders,
-  showToast
+  showToast,
 }: ArzaAuditorProps) {
-  // Mini tabs inside the auditor
-  const [auditTab, setAuditTab] = useState<'prices' | 'codes' | 'discrepancies'>('prices');
-  const [copiedTextId, setCopiedTextId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<AuditTab>('issues');
+  const [issues, setIssues] = useState<AuditIssue[]>([]);
+  const [duplicates, setDuplicates] = useState<DuplicateGroup[]>([]);
+  const [codeSuggestions, setCodeSuggestions] = useState<CodeSuggestion[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [fallback, setFallback] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const notifiedCriticals = useRef<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const canAct = userRole === 'rossy';
 
-  // 1. Audit Price Mismatches (Compare purchase order unit price with official catalogue price for that code)
-  const getPriceMismatches = () => {
-    return orders.map(order => {
-      const match = materials.find(m => m.code === order.code);
-      if (match && order.price !== match.price) {
-        const overcharge = order.price - match.price;
-        const totalLoss = overcharge * order.quantity;
-        return {
-          order,
-          officialPrice: match.price,
-          overcharge,
-          totalLoss,
-          isNegative: overcharge > 0 // Supplier is charging more
-        };
+  const logCorrection = async (
+    issue: AuditIssue,
+    actionTaken: string,
+    before: Record<string, unknown>,
+    after: Record<string, unknown>
+  ) => {
+    if (!user?.uid) return;
+    await saveAuditLog({
+      issueId: issue.id,
+      issueType: issue.type,
+      title: issue.title,
+      description: issue.description,
+      approvedByUid: user.uid,
+      approvedByEmail: user.email || '',
+      approvedAt: new Date().toISOString(),
+      actionTaken,
+      before,
+      after,
+    });
+  };
+
+  const runAudit = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ materials, orders, warehouse }),
+      });
+      const data = await res.json();
+      const newIssues = data.issues || [];
+      setIssues(newIssues);
+      setDuplicates(data.duplicates || []);
+      setFallback(Boolean(data.fallback));
+
+      for (const issue of newIssues) {
+        if (issue.severity === 'critical' && !notifiedCriticals.current.has(issue.id)) {
+          notifiedCriticals.current.add(issue.id);
+          await createCriticalNotification({
+            issueId: issue.id,
+            title: issue.title,
+            message: issue.description,
+            severity: 'critical',
+          });
+        }
       }
-      return null;
-    }).filter((item): item is NonNullable<typeof item> => item !== null);
+    } catch (err) {
+      console.error('Audit request failed:', err);
+      showToast('No se pudo contactar al auditor. Usando análisis local.');
+      setFallback(true);
+      setIssues([]);
+      setDuplicates([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // 2. Audit Missing/Orphan Codes (Order has a description but has a blank or temp code, or a code not in the master list)
-  const getOrphanOrders = () => {
-    return orders.map(order => {
-      const match = materials.find(m => m.code === order.code);
-      if (!match) {
-        // Try to suggest a code based on closest description match (substring)
-        const possibleMatches = materials.filter(m => 
-          m.description.toLowerCase().includes(order.description.toLowerCase().slice(0, 8)) ||
-          order.description.toLowerCase().includes(m.description.toLowerCase().slice(0, 8)) ||
-          (order.code && m.code.slice(0, 3) === order.code.slice(0, 3))
-        );
-        return {
-          order,
-          suggestedMaterials: possibleMatches.slice(0, 3)
-        };
-      }
-      return null;
-    }).filter((item): item is NonNullable<typeof item> => item !== null);
+  const runCodeSuggestions = async () => {
+    try {
+      const res = await fetch('/api/audit/suggest-codes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ materials }),
+      });
+      const data = await res.json();
+      setCodeSuggestions(data.suggestions || []);
+    } catch (err) {
+      console.error('Code suggestions failed:', err);
+      setCodeSuggestions([]);
+    }
   };
 
-  // 3. Audit Warehouse receipts discrepancies compared to requested amounts
-  const getWarehouseDiscrepancies = () => {
-    return warehouse.filter(entry => entry.expectedQuantity !== entry.receivedQuantity);
+  useEffect(() => {
+    runAudit();
+    runCodeSuggestions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [materials.length, orders.length, warehouse.length]);
+
+  const stats = useMemo(() => {
+    const critical = issues.filter((i) => i.severity === 'critical').length;
+    const warning = issues.filter((i) => i.severity === 'warning').length;
+    const info = issues.filter((i) => i.severity === 'info').length;
+    const financialImpact = issues.reduce((acc, i) => acc + (i.impact || 0), 0);
+    return { critical, warning, info, financialImpact, total: issues.length };
+  }, [issues]);
+
+  const toggleExpand = (id: string) => {
+    setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // Handlers for specific audit corrections
-  const fixPriceToPactado = (order: PurchaseOrder, officialPrice: number) => {
-    const updatedOrder: PurchaseOrder = {
-      ...order,
-      price: officialPrice,
-      total: order.quantity * officialPrice,
-      observation: (order.observation || '') + ` (Precio corregido y unificado al pactado oficial de $${officialPrice}).`
-    };
-    onUpdateOrder(updatedOrder);
-    showToast(`¡Precio de ${order.id} unificado a $${officialPrice} p/u!`);
+  const copyText = (id: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+    showToast('Texto copiado al portapapeles 📋');
   };
 
-  const fixOrderCode = (order: PurchaseOrder, selectedMaterial: Material) => {
-    const updatedOrder: PurchaseOrder = {
-      ...order,
-      code: selectedMaterial.code,
-      description: selectedMaterial.description,
-      price: selectedMaterial.price,
-      total: order.quantity * selectedMaterial.price,
-      observation: (order.observation || '') + ` (Código e insumo homologado por auditoría de Rossy a [${selectedMaterial.code}]).`
-    };
-    onUpdateOrder(updatedOrder);
-    showToast(`¡Orden ${order.id} homologada al código maestro ${selectedMaterial.code}!`);
-  };
-
-  const fixAllPricesBulk = () => {
-    const mismatches = getPriceMismatches();
-    if (mismatches.length === 0) {
-      showToast("No se detectaron sobrecostos en tus órdenes actuales.");
+  const exportToSheets = async () => {
+    if (!token) {
+      showToast('Conecta Google primero para exportar a Sheets.');
       return;
     }
+    setExporting(true);
+    try {
+      const res = await fetch('/api/audit/export-to-sheets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accessToken: token,
+          issues,
+          duplicates,
+          suggestions: codeSuggestions,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(`Auditoría exportada a Sheets: ${data.title}`);
+      } else {
+        showToast(`Error al exportar: ${data.error || 'desconocido'}`);
+      }
+    } catch (err) {
+      console.error('Export error:', err);
+      showToast('No se pudo exportar a Sheets.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
-    const updatedOrders = orders.map(order => {
-      const match = materials.find(m => m.code === order.code);
-      if (match && order.price !== match.price) {
+  const handleFixPrice = async (issue: AuditIssue) => {
+    const order = orders.find((o) => o.id === issue.data.orderId);
+    const expected = issue.data.expected as number | undefined;
+    if (!order || expected === undefined) return;
+    const before = { price: order.price, total: order.total };
+    const updated: PurchaseOrder = {
+      ...order,
+      price: expected,
+      total: order.quantity * expected,
+      observation:
+        (order.observation || '') +
+        ` [Auditoría] Precio corregido de $${order.price} a $${expected} tras aprobación de Rossy.`,
+    };
+    await logCorrection(issue, 'fix_price', before, { price: updated.price, total: updated.total });
+    onUpdateOrder(updated);
+    showToast(`Orden ${order.id} corregida a precio pactado $${expected}`);
+  };
+
+  const handleFixOrphan = async (issue: AuditIssue, material: Material) => {
+    const order = orders.find((o) => o.id === issue.data.orderId);
+    if (!order) return;
+    const before = { code: order.code, description: order.description, price: order.price };
+    const updated: PurchaseOrder = {
+      ...order,
+      code: material.code,
+      description: material.description,
+      price: material.price,
+      total: order.quantity * material.price,
+      observation:
+        (order.observation || '') +
+        ` [Auditoría] Código homologado a ${material.code} (${material.description}) tras aprobación de Rossy.`,
+    };
+    await logCorrection(issue, 'fix_orphan_code', before, { code: updated.code, description: updated.description, price: updated.price });
+    onUpdateOrder(updated);
+    showToast(`Orden ${order.id} homologada a ${material.code}`);
+  };
+
+  const handleCreateMaterialForOrphan = async (issue: AuditIssue) => {
+    const order = orders.find((o) => o.id === issue.data.orderId);
+    if (!order) return;
+    const exists = materials.some((m) => m.code === order.code);
+    if (exists) {
+      showToast('El código ya existe en el catálogo. Usa homologar en lugar de crear.');
+      return;
+    }
+    const newMaterial: Material = {
+      code: order.code,
+      description: order.description,
+      unit: order.unit,
+      price: order.price,
+    };
+    await logCorrection(issue, 'create_master_material', {}, { code: newMaterial.code, description: newMaterial.description, price: newMaterial.price });
+    onUpdateMaterial(newMaterial);
+    showToast(`Nuevo material ${order.code} agregado al catálogo maestro`);
+  };
+
+  const handleFixWarehouse = async (issue: AuditIssue) => {
+    const entry = warehouse.find((w) => w.orderId === issue.data.orderId);
+    const order = orders.find((o) => o.id === issue.data.orderId);
+    if (!entry || !order) return;
+    const received = entry.receivedQuantity;
+    const before = { receivedQuantity: order.receivedQuantity, status: order.status };
+    const updated: PurchaseOrder = {
+      ...order,
+      receivedQuantity: received,
+      status: received >= order.quantity ? 'completado' : 'parcial',
+      observation:
+        (order.observation || '') +
+        ` [Auditoría] Cantidad conciliada a ${received} unidades según recepción de bodega.`,
+    };
+    await logCorrection(issue, 'reconcile_warehouse', before, { receivedQuantity: updated.receivedQuantity, status: updated.status });
+    onUpdateOrder(updated);
+    showToast(`Orden ${order.id} conciliada con bodega`);
+  };
+
+  const handleMergeDuplicates = async (group: DuplicateGroup) => {
+    const codesToMerge = group.items.map((i) => i.code);
+    const updatedOrders = orders.map((o) => {
+      if (codesToMerge.includes(o.code)) {
         return {
-          ...order,
-          price: match.price,
-          total: order.quantity * match.price,
-          observation: (order.observation || '') + ` (Corrección masiva al precio pactado de $${match.price}).`
+          ...o,
+          code: group.suggestedCode,
+          description: group.canonicalDescription,
+          observation:
+            (o.observation || '') +
+            ` [Auditoría] Código fusionado a ${group.suggestedCode} por duplicidad detectada.`,
         };
       }
-      return order;
+      return o;
     });
-
+    await saveAuditLog({
+      issueId: `duplicate-${group.suggestedCode}`,
+      issueType: 'duplicate_material',
+      title: `Fusión de duplicados a ${group.suggestedCode}`,
+      description: group.canonicalDescription,
+      approvedByUid: user?.uid || '',
+      approvedByEmail: user?.email || '',
+      approvedAt: new Date().toISOString(),
+      actionTaken: 'merge_duplicates',
+      before: { codes: codesToMerge },
+      after: { canonicalCode: group.suggestedCode },
+    });
     onBulkUpdateOrders(updatedOrders);
-    showToast(`¡Éxito total! ${mismatches.length} órdenes unificadas al precio pactado.`);
+    showToast(`Duplicados fusionados bajo ${group.suggestedCode}`);
   };
 
-  const reconcileWarehouseQty = (entry: WarehouseEntry) => {
-    const relatedOrder = orders.find(o => o.id === entry.orderId);
-    if (relatedOrder) {
-      const updatedOrder: PurchaseOrder = {
-        ...relatedOrder,
-        quantity: entry.receivedQuantity,
-        total: entry.receivedQuantity * relatedOrder.price,
-        receivedQuantity: entry.receivedQuantity,
-        status: 'completado',
-        observation: (relatedOrder.observation || '') + ` (Cantidad ajustada a entrega de ${entry.receivedQuantity} p/u según bodeguero).`
-      };
-      onUpdateOrder(updatedOrder);
-      showToast(`¡Orden ${relatedOrder.id} ajustada a ${entry.receivedQuantity} unidades entregadas!`);
+  const handleApplySuggestion = async (suggestion: CodeSuggestion) => {
+    const exists = materials.some((m) => m.code === suggestion.suggestedCode);
+    if (exists) {
+      showToast('El código sugerido ya existe. Revisa antes de aplicar.');
+      return;
     }
+    const newMaterial: Material = {
+      code: suggestion.suggestedCode,
+      description: suggestion.materialDescription,
+      unit: 'PZ',
+      price: suggestion.suggestedPrice,
+    };
+    await saveAuditLog({
+      issueId: `suggest-${suggestion.suggestedCode}`,
+      issueType: 'orphan_code',
+      title: `Código sugerido registrado: ${suggestion.suggestedCode}`,
+      description: suggestion.materialDescription,
+      approvedByUid: user?.uid || '',
+      approvedByEmail: user?.email || '',
+      approvedAt: new Date().toISOString(),
+      actionTaken: 'apply_code_suggestion',
+      before: { currentCode: suggestion.currentCode || '' },
+      after: { code: newMaterial.code, price: newMaterial.price },
+    });
+    onUpdateMaterial(newMaterial);
+    showToast(`Código ${suggestion.suggestedCode} registrado en catálogo`);
   };
 
-  const copyReportToClipboard = (reportId: string, text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedTextId(reportId);
-    setTimeout(() => {
-      setCopiedTextId(null);
-    }, 2000);
-    showToast("¡Texto de reporte copiado al portapapeles de Rossy! 📋");
-  };
-
-  // Live Statistics Indicators
-  const mismatches = getPriceMismatches();
-  const orphans = getOrphanOrders();
-  const warehouseIssues = getWarehouseDiscrepancies();
-
-  const totalOverspent = mismatches
-    .filter(m => m.isNegative)
-    .reduce((acc, curr) => acc + (curr.totalLoss), 0);
-
-  const compileDraftReport = () => {
-    let report = `🚨 *ARZA CONSTRUCTORA - REPORTE DE AUDITORÍA DE COMPRAS* 🚨\n`;
-    report += `Generado el: ${new Date().toLocaleDateString('es-MX')} - Centro de Control de Compras\n\n`;
-    
-    if (mismatches.length > 0) {
-      report += `💸 *SOBRECOSTOS DETECTADOS (DIF. DE PRECIO PACTADO):*\n`;
-      mismatches.forEach(m => {
-        report += `- [Orden ${m.order.id}] en ${m.order.project}: Se cobró a $${m.order.price} p/u en lugar de $${m.officialPrice}. Diferencia: +$${m.overcharge} p/u (Efecto total: $${m.totalLoss.toLocaleString()} MXN)\n`;
+  const compileReport = () => {
+    let report = `🚨 *ARZA CONSTRUCTORA - REPORTE DE AUDITORÍA* 🚨\n`;
+    report += `Generado: ${new Date().toLocaleDateString('es-MX')}\n`;
+    report += `Hallazgos: ${stats.total} | Críticos: ${stats.critical} | Advertencias: ${stats.warning} | Impacto: $${stats.financialImpact.toLocaleString('es-MX')} MXN\n\n`;
+    issues.forEach((i) => {
+      report += `- [${severityLabel(i.severity)}] ${i.title}: ${i.description}\n`;
+      report += `  Acción sugerida: ${i.suggestedAction}\n\n`;
+    });
+    if (duplicates.length) {
+      report += `\n🔗 *POSIBLES DUPLICADOS EN CATÁLOGO:*\n`;
+      duplicates.forEach((g) => {
+        report += `- ${g.canonicalDescription} → usar ${g.suggestedCode}\n`;
       });
-      report += `*Fuga Financiera Acumulada:* $${totalOverspent.toLocaleString()} MXN\n\n`;
-    } else {
-      report += `✅ No se han detectado variaciones de precios cobrados vs contratados.\n\n`;
     }
-
-    if (orphans.length > 0) {
-      report += `🔗 *ÓRDENES CON CLAVES INCORRECTAS O HUÉRFANAS:*\n`;
-      orphans.forEach(o => {
-        report += `- [Orden ${o.order.id}] ${o.order.description}: Clave registrada [${o.order.code || 'Ninguna'}] no existe en el Catálogo Maestro.\n`;
-      });
-      report += `\n`;
-    }
-
-    if (warehouseIssues.length > 0) {
-      report += `📦 *DISCREPANCIAS EN RECIBOS DE BODEGA (BODEGUERAS):*\n`;
-      warehouseIssues.forEach(w => {
-        const gap = w.expectedQuantity - w.receivedQuantity;
-        report += `- [Entrada ${w.id} sobre OC ${w.orderId}]: Se esperaban ${w.expectedQuantity} pero se recibieron ${w.receivedQuantity} p/u. Faltante: -${gap} unidades. Observación: "${w.observation}" (Reportó: ${w.observer})\n`;
-      });
-      report += `\n`;
-    }
-
-    report += `Rossy Morales - Control de Obra Arza\nGenerado con el Agente de Sheets Inteligente.`;
     return report;
+  };
+
+  const orphanSuggestionsFor = (issue: AuditIssue) => {
+    const order = orders.find((o) => o.id === issue.data.orderId);
+    if (!order) return [];
+    const term = order.description.toLowerCase().slice(0, 8);
+    return materials
+      .filter(
+        (m) =>
+          m.description.toLowerCase().includes(term) ||
+          order.description.toLowerCase().includes(m.description.toLowerCase().slice(0, 8))
+      )
+      .slice(0, 4);
   };
 
   return (
     <div className="bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm">
-      {/* Header Banner - Emerald Accent */}
+      {/* Header */}
       <div className="bg-gradient-to-r from-arza-500/10 via-emerald-50 to-arza-100/30 p-4 border-b border-stone-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div className="flex items-center space-x-2.5">
           <div className="bg-arza-600/10 p-2 rounded-lg border border-arza-300/40 text-arza-700">
@@ -219,66 +400,91 @@ export default function ArzaAuditor({
           </div>
           <div>
             <h4 className="text-[13px] font-bold text-stone-800 uppercase tracking-wide flex items-center gap-1.5">
-              Auditoría y Errores Humanos de Proveedor
-              <span className="text-[9px] bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 rounded-full font-bold">
-                Margaritas & Rosy Sync
-              </span>
+              Auditoría de Datos
+              {fallback && (
+                <span className="text-[9px] bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-bold">
+                  Modo local
+                </span>
+              )}
+              {stats.critical > 0 && (
+                <span className="text-[9px] bg-rose-100 text-rose-700 border border-rose-200 px-2 py-0.5 rounded-full font-bold animate-pulse">
+                  {stats.critical} crítico{stats.critical > 1 ? 's' : ''}
+                </span>
+              )}
             </h4>
-            <p className="text-[11px] text-stone-500">Detecta discrepancias de cotización, códigos incorrectos y faltantes de bodega</p>
+            <p className="text-[11px] text-stone-500">
+              Hallazgos del agente. Rossy aprueba cada corrección; nunca se tocan los Excel fuente sin permiso.
+            </p>
           </div>
         </div>
-
-        <button
-          onClick={fixAllPricesBulk}
-          disabled={mismatches.length === 0}
-          className="text-[11px] font-bold bg-arza-600 hover:bg-arza-700 disabled:opacity-40 disabled:hover:bg-arza-600 text-white px-4 py-2 rounded-lg flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
-        >
-          <Sparkles className="w-4 h-4" />
-          Unificar Precios Pactados ({mismatches.length})
-        </button>
-      </div>
-
-      {/* Grid of Audit Stats Indicators */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 border-b border-stone-200 bg-stone-50/50 text-xs">
-        <div className="p-3 border-r border-stone-200 flex items-center justify-between">
-          <span className="text-stone-600 flex items-center gap-1"><DollarSign className="w-3.5 h-3.5 text-rose-500" /> Sobreprecios Detectados:</span>
-          <span className={`font-mono text-sm font-bold ${totalOverspent > 0 ? 'text-rose-600' : 'text-arza-600'}`}>
-            ${totalOverspent.toLocaleString('es-MX')} MXN
-          </span>
-        </div>
-        <div className="p-3 border-r border-stone-200 flex items-center justify-between">
-          <span className="text-stone-600 flex items-center gap-1"><Layers className="w-3.5 h-3.5 text-amber-500" /> Claves Erróneas:</span>
-          <span className={`font-bold ${orphans.length > 0 ? 'text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200' : 'text-arza-700'}`}>
-            {orphans.length} registros
-          </span>
-        </div>
-        <div className="p-3 flex items-center justify-between">
-          <span className="text-stone-600 flex items-center gap-1"><Archive className="w-3.5 h-3.5 text-blue-500" /> Recibos Incompletos:</span>
-          <span className={`font-bold ${warehouseIssues.length > 0 ? 'text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200' : 'text-arza-700'}`}>
-            {warehouseIssues.length} diferencias
-          </span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={runAudit}
+            disabled={loading}
+            className="text-[11px] font-bold bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 px-3 py-2 rounded-lg flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? 'Analizando...' : 'Volver a auditar'}
+          </button>
+          <button
+            onClick={() => copyText('general-report', compileReport())}
+            className="text-[11px] font-bold bg-arza-600 hover:bg-arza-700 text-white px-3 py-2 rounded-lg flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+          >
+            {copiedId === 'general-report' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            Copiar reporte
+          </button>
+          <button
+            onClick={exportToSheets}
+            disabled={exporting || !token}
+            className="text-[11px] font-bold bg-white hover:bg-stone-50 disabled:opacity-40 text-stone-700 border border-stone-200 px-3 py-2 rounded-lg flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+          >
+            <FileSpreadsheet className={`w-4 h-4 ${exporting ? 'animate-spin' : ''}`} />
+            {exporting ? 'Exportando...' : 'Exportar a Sheets'}
+          </button>
         </div>
       </div>
 
-      {/* Audit filter Subtabs */}
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 border-b border-stone-200 bg-stone-50/50 text-xs">
+        <div className="p-3 border-r border-stone-200 flex flex-col">
+          <span className="text-stone-500 text-[10px] uppercase tracking-wider font-semibold">Hallazgos</span>
+          <span className="font-mono text-lg font-bold text-stone-800">{stats.total}</span>
+        </div>
+        <div className="p-3 border-r border-stone-200 flex flex-col">
+          <span className="text-stone-500 text-[10px] uppercase tracking-wider font-semibold">Críticos</span>
+          <span className="font-mono text-lg font-bold text-rose-600">{stats.critical}</span>
+        </div>
+        <div className="p-3 border-r border-stone-200 flex flex-col">
+          <span className="text-stone-500 text-[10px] uppercase tracking-wider font-semibold">Advertencias</span>
+          <span className="font-mono text-lg font-bold text-amber-600">{stats.warning}</span>
+        </div>
+        <div className="p-3 flex flex-col">
+          <span className="text-stone-500 text-[10px] uppercase tracking-wider font-semibold">Impacto estimado</span>
+          <span className="font-mono text-lg font-bold text-stone-800">
+            ${stats.financialImpact.toLocaleString('es-MX')}
+          </span>
+        </div>
+      </div>
+
+      {/* Tabs */}
       <div className="bg-stone-50 p-2 flex border-b border-stone-200 gap-1.5">
         {[
-          { key: 'prices', label: '💸 Precios Alterados', count: mismatches.length, activeBg: 'bg-rose-50 text-rose-700 border-rose-200', defaultText: 'text-stone-600 hover:bg-stone-100' },
-          { key: 'codes', label: '🔗 Claves Huérfanas', count: orphans.length, activeBg: 'bg-amber-50 text-amber-700 border-amber-200', defaultText: 'text-stone-600 hover:bg-stone-100' },
-          { key: 'discrepancies', label: '📦 Faltantes de Flete', count: warehouseIssues.length, activeBg: 'bg-blue-50 text-blue-700 border-blue-200', defaultText: 'text-stone-600 hover:bg-stone-100' }
-        ].map(tab => (
+          { key: 'issues', label: 'Hallazgos', count: issues.length },
+          { key: 'duplicates', label: 'Duplicados', count: duplicates.length },
+          { key: 'codes', label: 'Sugerir códigos', count: codeSuggestions.length },
+        ].map((tab) => (
           <button
             key={tab.key}
-            onClick={() => setAuditTab(tab.key as any)}
+            onClick={() => setActiveTab(tab.key as AuditTab)}
             className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer transition-all border ${
-              auditTab === tab.key
-                ? `${tab.activeBg} shadow-sm font-bold`
-                : `${tab.defaultText} border-transparent`
+              activeTab === tab.key
+                ? 'bg-arza-100 text-arza-800 border-arza-300 shadow-sm'
+                : 'text-stone-600 hover:bg-stone-100 border-transparent'
             }`}
           >
-            <span>{tab.label}</span>
+            {tab.label}
             {tab.count > 0 && (
-              <span className="bg-white/80 border border-current px-1.5 py-0.2 rounded text-[10px] font-mono">
+              <span className="bg-white/80 border border-current px-1.5 py-0.5 rounded text-[10px] font-mono">
                 {tab.count}
               </span>
             )}
@@ -286,224 +492,279 @@ export default function ArzaAuditor({
         ))}
       </div>
 
-      {/* Auditor core lists with elegant scrollbar */}
-      <div className="p-4 max-h-[300px] overflow-y-auto bg-white">
-        
-        {/* PRICES TAB */}
-        {auditTab === 'prices' && (
-          <div className="space-y-3">
-            {mismatches.length > 0 ? (
-              mismatches.map(({ order, officialPrice, overcharge, totalLoss }) => (
-                <div 
-                  key={order.id} 
-                  className="bg-rose-50/20 p-3.5 rounded-xl border border-rose-200/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 hover:bg-rose-50 transition-colors"
-                >
-                  <div className="space-y-1 group">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[9px] font-bold bg-rose-100 text-rose-700 border border-rose-200 px-2 py-0.5 rounded-full uppercase">
-                        Precio Facturado Alto
-                      </span>
-                      <span className="text-[10px] text-stone-500 font-mono font-bold uppercase">{order.id} ({order.project})</span>
-                    </div>
-                    <h5 className="text-[12px] font-bold text-stone-800">{order.description}</h5>
-                    <div className="text-[10px] text-stone-500 font-mono flex flex-wrap gap-x-4">
-                      <span>Proveedor: <strong className="text-stone-700">{order.supplier}</strong></span>
-                      <span>Factura/Venta: <strong className="text-rose-600 font-bold">${order.price}</strong></span>
-                      <span>Catálogo Arza: <strong className="text-arza-600 font-bold">${officialPrice}</strong></span>
-                    </div>
-                    <div className="text-[11px] text-rose-700 font-semibold flex items-center pt-1">
-                      <AlertOctagon className="w-3.5 h-3.5 mr-1 text-rose-500 shrink-0" />
-                      Variación: +${overcharge} p/u • Gasto excedente en {order.quantity} unidades: <b className="font-mono">${totalLoss.toLocaleString()} MXN</b>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => fixPriceToPactado(order, officialPrice)}
-                    className="shrink-0 bg-arza-600 hover:bg-arza-700 text-white text-[11px] font-bold px-3.5 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-sm"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    Corregir a ${officialPrice}
-                  </button>
+      {/* Content */}
+      <div className="p-4 max-h-[420px] overflow-y-auto bg-white">
+        <AnimatePresence mode="wait">
+          {activeTab === 'issues' && (
+            <motion.div
+              key="issues"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              className="space-y-3"
+            >
+              {issues.length === 0 ? (
+                <div className="text-center py-10 text-xs text-stone-400 flex flex-col items-center justify-center space-y-2">
+                  <ShieldCheck className="w-8 h-8 text-arza-500" />
+                  <span className="font-bold text-stone-700">No se detectaron inconsistencias</span>
+                  <span>El análisis local y el agente no encontraron problemas relevantes.</span>
                 </div>
-              ))
-            ) : (
-              <div className="text-center py-8 text-xs text-stone-400 flex flex-col items-center justify-center space-y-2">
-                <ShieldCheck className="w-8 h-8 text-arza-500" />
-                <span className="font-bold text-stone-700">¡Perfecto! Precios cuadrados</span>
-                <span>Las órdenes de compra coinciden de forma exacta con los precios del padrón maestro de Margarita.</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* CODES TAB */}
-        {auditTab === 'codes' && (
-          <div className="space-y-3">
-            {orphans.length > 0 ? (
-              orphans.map(({ order, suggestedMaterials }) => (
-                <div 
-                  key={order.id} 
-                  className="bg-amber-50/20 p-3.5 rounded-xl border border-amber-200/50 flex flex-col gap-3 hover:bg-amber-50 transition-colors"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[9px] font-bold bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full uppercase">
-                        Clave Errónea o Vacía
-                      </span>
-                      <span className="text-[10px] text-stone-500 font-mono font-bold uppercase">{order.id}</span>
-                    </div>
-                    <h5 className="text-[12px] font-bold text-stone-800">{order.description}</h5>
-                    <span className="text-[10px] text-stone-500 block font-mono">
-                      Clave Capturada: <strong className="text-rose-600 bg-red-50 border border-red-100 rounded px-1">&quot;{order.code || 'En blanco'}&quot;</strong> (Margarita rechazará la facturación por catálogo no homologado)
-                    </span>
-                  </div>
-
-                  {suggestedMaterials.length > 0 ? (
-                    <div className="space-y-2 pt-2 border-t border-stone-100">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-stone-500 flex items-center gap-1">
-                        <Sparkles className="w-3.5 h-3.5 text-arza-600" />
-                        Sugerencias Inteligentes Encontradas en Excel de Registro:
-                      </p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {suggestedMaterials.map(mat => (
-                          <div 
-                            key={mat.code}
-                            className="bg-white border border-stone-200 p-2 rounded-lg flex items-center justify-between text-[11px] hover:border-stone-300 transition-all shadow-xs"
-                          >
-                            <div className="min-w-0 pr-2">
-                              <span className="font-mono text-arza-600 font-bold block">[{mat.code}]</span>
-                              <span className="text-stone-700 truncate block font-medium">{mat.description}</span>
-                            </div>
-                            <button
-                              onClick={() => fixOrderCode(order, mat)}
-                              className="text-[10px] font-bold bg-arza-50 hover:bg-arza-600 hover:text-white text-arza-700 px-2.5 py-1 rounded-md transition-colors cursor-pointer shrink-0 border border-arza-200"
+              ) : (
+                issues.map((issue) => {
+                  const isOpen = expanded[issue.id];
+                  return (
+                    <div
+                      key={issue.id}
+                      className={`rounded-xl border p-3.5 transition-colors ${
+                        issue.severity === 'critical'
+                          ? 'bg-rose-50/30 border-rose-200/60 hover:bg-rose-50/50'
+                          : issue.severity === 'warning'
+                            ? 'bg-amber-50/30 border-amber-200/60 hover:bg-amber-50/50'
+                            : 'bg-stone-50 border-stone-200 hover:bg-stone-100/50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span
+                              className={`text-[9px] font-bold px-2 py-0.5 rounded-full border uppercase ${severityBadge(issue.severity)}`}
                             >
-                              Homologar
-                            </button>
+                              {severityLabel(issue.severity)}
+                            </span>
+                            <span className="text-[10px] text-stone-500 font-mono font-bold uppercase">
+                              {issue.type}
+                            </span>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-[10px] text-stone-500 bg-stone-50 p-2.5 rounded-lg flex items-center gap-1.5 border border-stone-200">
-                      <HelpCircle className="w-4 h-4 text-stone-400 shrink-0" />
-                      No se detectó similitud directa. Por favor registre este insumo como código maestro en la pestaña o pídale por chat al Agente que asigne una clave.
-                    </div>
-                  )}
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-8 text-xs text-stone-400 flex flex-col items-center justify-center space-y-2">
-                <FileCheck2 className="w-8 h-8 text-arza-500" />
-                <span className="font-bold text-stone-700">¡Sincronización impecable de claves!</span>
-                <span>Todas las cotizaciones guardadas por Rosy poseen códigos oficiales de Margarita listos para enviar.</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* WAREHOUSE TAB */}
-        {auditTab === 'discrepancies' && (
-          <div className="space-y-3">
-            {warehouseIssues.length > 0 ? (
-              warehouseIssues.map(entry => {
-                const gap = entry.expectedQuantity - entry.receivedQuantity;
-                const relatedOrder = orders.find(o => o.id === entry.orderId);
-                const financialImpact = relatedOrder ? gap * relatedOrder.price : 0;
-
-                return (
-                  <div 
-                    key={entry.id} 
-                    className="bg-blue-50/20 p-3.5 rounded-xl border border-blue-200/50 flex flex-col gap-3 hover:bg-blue-50 transition-colors"
-                  >
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[9px] font-bold bg-blue-100 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full uppercase">
-                            Diferencia de Rendido / Chofer
-                          </span>
-                          <span className="text-[10px] text-stone-500 font-mono font-bold uppercase">{entry.id} • Sobre: {entry.orderId}</span>
-                        </div>
-                        <h5 className="text-[12px] font-bold text-stone-800">{entry.description}</h5>
-                        <div className="text-[11px] text-stone-600 font-mono leading-relaxed space-y-0.5">
-                          <div>Fila solicitada: <strong className="text-stone-700">{entry.expectedQuantity} piezas</strong> (Orden de compra)</div>
-                          <div>Recibido en flete: <strong className="text-rose-600 font-bold">{entry.receivedQuantity} piezas</strong> (Firma Almacén)</div>
-                          <div className="text-rose-600 font-bold flex items-center">
-                            ⚠️ Faltante Físico de Obra: {gap} unidades menos (Gasto fantasma: ${financialImpact.toLocaleString()} MXN)
-                          </div>
-                        </div>
-                        {entry.observation && (
-                          <p className="text-[10px] bg-white border border-stone-200 p-2 rounded-lg text-stone-500 italic mt-1 shadow-2xs">
-                            Observación Almacenista: &quot;{entry.observation}&quot;
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex sm:flex-col gap-1.5 shrink-0 self-end sm:self-center">
-                        <button
-                          onClick={() => reconcileWarehouseQty(entry)}
-                          className="text-[10px] font-bold bg-arza-600 hover:bg-arza-700 text-white px-3 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-sm"
-                        >
-                          <Scale className="w-3.5 h-3.5" />
-                          Conciliar OC a Real
-                        </button>
-                        
-                        <button
-                          onClick={() => copyReportToClipboard(
-                            entry.id, 
-                            `Estimado proveedor,\nEncontramos una discrepancia en el recibo de obra ${entry.id} vinculado a la orden ${entry.orderId}.\n\nInsumo: ${entry.description}\nCantidad solicitada: ${entry.expectedQuantity}\nCantidad recibida por bodeguero: ${entry.receivedQuantity}\nFaltante físico: ${gap} unidades.\n\nPor favor de enviar la aclaración para ajustar el saldo en la factura de Margarita.\n\nAtte: Control de Compras Arza`
+                          <h5 className="text-[12px] font-bold text-stone-800">{issue.title}</h5>
+                          <p className="text-[11px] text-stone-600 leading-relaxed">{issue.description}</p>
+                          {issue.impact > 0 && (
+                            <p className="text-[11px] font-mono text-stone-700">
+                              Impacto estimado:{' '}
+                              <strong className={issue.severity === 'critical' ? 'text-rose-600' : 'text-amber-600'}>
+                                ${issue.impact.toLocaleString('es-MX')} MXN
+                              </strong>
+                            </p>
                           )}
-                          className="text-[10px] font-bold bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 shadow-2xs"
+                        </div>
+                        <button
+                          onClick={() => toggleExpand(issue.id)}
+                          className="shrink-0 text-stone-400 hover:text-stone-700 transition-colors"
                         >
-                          {copiedTextId === entry.id ? <Check className="w-3.5 h-3.5 text-arza-600" /> : <Copy className="w-3.5 h-3.5 text-stone-500" />}
-                          Copiar Mensaje
+                          {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                         </button>
                       </div>
+
+                      <AnimatePresence>
+                        {isOpen && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="pt-3 mt-3 border-t border-stone-200/70 space-y-3">
+                              <div className="text-[10px] text-stone-500 font-mono bg-white border border-stone-200 p-2 rounded-lg">
+                                <strong>Acción sugerida:</strong> {issue.suggestedAction}
+                              </div>
+
+                              {issue.type === 'price_mismatch' && (
+                                <button
+                                  onClick={() => handleFixPrice(issue)}
+                                  disabled={!canAct}
+                                  className="text-[11px] font-bold bg-arza-600 hover:bg-arza-700 disabled:opacity-40 disabled:hover:bg-arza-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                                >
+                                  <DollarSign className="w-3.5 h-3.5" />
+                                  Aprobar corrección de precio
+                                </button>
+                              )}
+
+                              {issue.type === 'orphan_code' && (
+                                <div className="space-y-2">
+                                  <p className="text-[10px] font-semibold text-stone-600 uppercase tracking-wider">
+                                    Homologar con catálogo maestro
+                                  </p>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    {orphanSuggestionsFor(issue).map((mat) => (
+                                      <div
+                                        key={mat.code}
+                                        className="flex items-center justify-between bg-white border border-stone-200 p-2 rounded-lg"
+                                      >
+                                        <div className="min-w-0 pr-2">
+                                          <span className="font-mono text-arza-600 font-bold text-[11px] block">
+                                            {mat.code}
+                                          </span>
+                                          <span className="text-stone-700 text-[11px] truncate block">
+                                            {mat.description}
+                                          </span>
+                                        </div>
+                                        <button
+                                          onClick={() => handleFixOrphan(issue, mat)}
+                                          disabled={!canAct}
+                                          className="text-[10px] font-bold bg-arza-50 hover:bg-arza-600 hover:text-white disabled:opacity-40 disabled:hover:bg-arza-50 disabled:hover:text-arza-700 text-arza-700 px-2.5 py-1 rounded-md transition-colors cursor-pointer shrink-0 border border-arza-200"
+                                        >
+                                          Homologar
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <button
+                                    onClick={() => handleCreateMaterialForOrphan(issue)}
+                                    disabled={!canAct}
+                                    className="text-[10px] font-bold bg-white hover:bg-stone-50 disabled:opacity-40 text-stone-700 border border-stone-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+                                  >
+                                    <Sparkles className="w-3.5 h-3.5" />
+                                    Agregar orden como nuevo material maestro
+                                  </button>
+                                </div>
+                              )}
+
+                              {issue.type === 'warehouse_discrepancy' && (
+                                <button
+                                  onClick={() => handleFixWarehouse(issue)}
+                                  disabled={!canAct}
+                                  className="text-[11px] font-bold bg-arza-600 hover:bg-arza-700 disabled:opacity-40 disabled:hover:bg-arza-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  Aprobar conciliación con bodega
+                                </button>
+                              )}
+
+                              <button
+                                onClick={() => copyText(issue.id, `${issue.title}\n${issue.description}\n${issue.suggestedAction}`)}
+                                className="text-[10px] font-bold text-stone-600 hover:text-arza-700 flex items-center gap-1 transition-colors"
+                              >
+                                {copiedId === issue.id ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                                Copiar detalle
+                              </button>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  );
+                })
+              )}
+            </motion.div>
+          )}
+
+          {activeTab === 'duplicates' && (
+            <motion.div
+              key="duplicates"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              className="space-y-3"
+            >
+              {duplicates.length === 0 ? (
+                <div className="text-center py-10 text-xs text-stone-400 flex flex-col items-center justify-center space-y-2">
+                  <FileCheck2 className="w-8 h-8 text-arza-500" />
+                  <span className="font-bold text-stone-700">Sin duplicados detectados</span>
+                  <span>No se encontraron descripciones similares en el catálogo.</span>
+                </div>
+              ) : (
+                duplicates.map((group, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-amber-50/20 border border-amber-200/50 rounded-xl p-3.5 space-y-2"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h5 className="text-[12px] font-bold text-stone-800">{group.canonicalDescription}</h5>
+                        <p className="text-[11px] text-stone-600">
+                          Código recomendado:{' '}
+                          <span className="font-mono font-bold text-arza-600">{group.suggestedCode}</span>
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleMergeDuplicates(group)}
+                        disabled={!canAct}
+                        className="shrink-0 text-[10px] font-bold bg-arza-600 hover:bg-arza-700 disabled:opacity-40 disabled:hover:bg-arza-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                      >
+                        <GitMerge className="w-3.5 h-3.5" />
+                        Fusionar
+                      </button>
+                    </div>
+                    <div className="space-y-1">
+                      {group.items.map((item) => (
+                        <div
+                          key={item.code}
+                          className="flex items-center justify-between text-[11px] bg-white border border-stone-200 px-2 py-1.5 rounded-lg"
+                        >
+                          <span className="font-mono text-stone-700">{item.code}</span>
+                          <span className="text-stone-600 truncate max-w-[180px]">{item.description}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                );
-              })
-            ) : (
-              <div className="text-center py-8 text-xs text-stone-400 flex flex-col items-center justify-center space-y-2">
-                <FileCheck2 className="w-8 h-8 text-arza-500" />
-                <span className="font-bold text-stone-700">¡Entregas en orden en bodega!</span>
-                <span>Los reportes de Joli y Kari corresponden con los manifiestos de fletes. Sin pérdidas registradas.</span>
-              </div>
-            )}
-          </div>
-        )}
+                ))
+              )}
+            </motion.div>
+          )}
 
+          {activeTab === 'codes' && (
+            <motion.div
+              key="codes"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              className="space-y-3"
+            >
+              {codeSuggestions.length === 0 ? (
+                <div className="text-center py-10 text-xs text-stone-400 flex flex-col items-center justify-center space-y-2">
+                  <Lightbulb className="w-8 h-8 text-arza-500" />
+                  <span className="font-bold text-stone-700">Sin sugerencias de código</span>
+                  <span>Todos los materiales parecen tener código oficial.</span>
+                </div>
+              ) : (
+                codeSuggestions.map((s, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 space-y-2"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <h5 className="text-[12px] font-bold text-stone-800">{s.materialDescription}</h5>
+                        <div className="flex items-center gap-2 text-[11px] text-stone-600">
+                          <span>
+                            Código actual:{' '}
+                            <span className="font-mono font-bold text-rose-600">{s.currentCode || 'Ninguno'}</span>
+                          </span>
+                          <span>→</span>
+                          <span>
+                            Sugerido:{' '}
+                            <span className="font-mono font-bold text-arza-600">{s.suggestedCode}</span>
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-stone-500">{s.reason}</p>
+                      </div>
+                      <button
+                        onClick={() => handleApplySuggestion(s)}
+                        disabled={!canAct}
+                        className="shrink-0 text-[10px] font-bold bg-arza-600 hover:bg-arza-700 disabled:opacity-40 disabled:hover:bg-arza-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Registrar
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* Copy Report Draft WhatsApp Sidebar widget */}
-      <div className="bg-stone-50 p-4 border-t border-stone-200 bg-gradient-to-br from-white to-stone-50/50 space-y-2.5">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-          <div>
-            <h5 className="text-[12px] font-bold text-stone-800 flex items-center gap-1.5">
-              <MessageSquare className="w-4 h-4 text-arza-600" />
-              Minuta de Audición de Carpeta WhatsApp
-            </h5>
-            <p className="text-[10px] text-stone-500">Perfecto para pasar un consolidado a José Pablo, Margarita o los proveedores</p>
-          </div>
-          <button
-            onClick={() => copyReportToClipboard('general-report', compileDraftReport())}
-            className="text-[10px] font-bold bg-arza-600 hover:bg-arza-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-sm"
-          >
-            {copiedTextId === 'general-report' ? (
-              <>
-                <Check className="w-3.5 h-3.5 text-white" />
-                ¡Copiado!
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5" />
-                Copiar Minuta Completa
-              </>
-            )}
-          </button>
+      {/* Footer report preview */}
+      <div className="bg-stone-50 p-4 border-t border-stone-200 space-y-2">
+        <div className="flex items-center justify-between">
+          <h5 className="text-[12px] font-bold text-stone-800 flex items-center gap-1.5">
+            <MessageSquare className="w-4 h-4 text-arza-600" />
+            Minuta para WhatsApp
+          </h5>
+          <span className="text-[10px] text-stone-500">Se copia sin modificar archivos fuente.</span>
         </div>
         <div className="text-[10px] font-mono text-stone-600 bg-white border border-stone-200 p-3 rounded-lg max-h-[90px] overflow-y-auto whitespace-pre-wrap select-all shadow-2xs">
-          {compileDraftReport()}
+          {compileReport()}
         </div>
       </div>
     </div>

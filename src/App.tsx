@@ -57,7 +57,9 @@ import {
   fetchOrdersFromCloud, 
   saveOrderToCloud, 
   fetchWarehouseFromCloud, 
-  saveWarehouseEntryToCloud 
+  saveWarehouseEntryToCloud,
+  ensureUserProfile,
+  type UserRole
 } from './firestore';
 
 export default function App() {
@@ -66,6 +68,7 @@ export default function App() {
   const [token, setToken] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isSandbox, setIsSandbox] = useState(true);
+  const [userRole, setUserRole] = useState<UserRole>('rossy');
 
   // Sheets Data States
   const [materials, setMaterials] = useState<Material[]>(INITIAL_MATERIALS);
@@ -73,7 +76,7 @@ export default function App() {
   const [warehouse, setWarehouse] = useState<WarehouseEntry[]>(INITIAL_WAREHOUSE);
 
   // Active View Tabs
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'catalogo' | 'ordenes' | 'bodega'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'catalogo' | 'ordenes' | 'bodega' | 'auditoria'>('dashboard');
   
   // Filtering & Searches
   const [materialSearch, setMaterialSearch] = useState('');
@@ -104,6 +107,22 @@ export default function App() {
   const [isSyncingToSheets, setIsSyncingToSheets] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Role-based access helper
+  const canAccessTab = (tab: string, role: UserRole): boolean => {
+    if (role === 'rossy') return true;
+    if (role === 'margarita') return ['dashboard', 'catalogo', 'auditoria'].includes(tab);
+    if (role === 'bodega') return ['bodega'].includes(tab);
+    return true;
+  };
+
+  useEffect(() => {
+    if (!canAccessTab(activeTab, userRole)) {
+      if (userRole === 'margarita') setActiveTab('catalogo');
+      else if (userRole === 'bodega') setActiveTab('bodega');
+      else setActiveTab('dashboard');
+    }
+  }, [activeTab, userRole]);
 
   // Fetch Spreadsheets list from Google Drive
   const fetchSpreadsheetsFromDrive = async (accessToken: string) => {
@@ -386,7 +405,9 @@ export default function App() {
         setUser(googleUser);
         setToken(accessToken);
         setIsSandbox(false);
-        showToast("¡Sesión de Google Sheets oficial activada con éxito!");
+        const profile = await ensureUserProfile(googleUser, 'rossy');
+        setUserRole(profile.role);
+        showToast(`¡Sesión activada como ${profile.role}!`);
         await syncFromFirestore();
         await fetchSpreadsheetsFromDrive(accessToken);
       },
@@ -418,7 +439,9 @@ export default function App() {
         setUser(result.user);
         setToken(result.accessToken);
         setIsSandbox(false);
-        showToast("¡Conectada a Google Sheets correctamente!");
+        const profile = await ensureUserProfile(result.user, 'rossy');
+        setUserRole(profile.role);
+        showToast(`¡Conectada como ${profile.role}!`);
         await syncFromFirestore();
         await fetchSpreadsheetsFromDrive(result.accessToken);
         
@@ -664,7 +687,13 @@ He activado los permisos para mapear tu hoja de cálculo real de Arza en Google 
   };
 
   const handleUpdateMaterial = (updatedMaterial: Material) => {
-    setMaterials(prev => prev.map(m => m.code === updatedMaterial.code ? updatedMaterial : m));
+    setMaterials(prev => {
+      const exists = prev.some(m => m.code === updatedMaterial.code);
+      if (exists) {
+        return prev.map(m => m.code === updatedMaterial.code ? updatedMaterial : m);
+      }
+      return [updatedMaterial, ...prev];
+    });
     saveMaterialToCloud(updatedMaterial);
   };
 
@@ -1142,20 +1171,23 @@ He activado los permisos para mapear tu hoja de cálculo real de Arza en Google 
           {/* Tab Menu Header - Excel Style */}
           <div className="bg-stone-50 border-b border-stone-200 shrink-0 flex flex-wrap justify-between items-center sm:px-4 select-none">
             <div className="flex space-x-1.5 p-2">
-              <button 
-                onClick={() => { setActiveTab('dashboard'); setNewOrderForm(false); }}
-                className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === 'dashboard' 
-                    ? 'bg-surface text-arza-800 shadow-xs border border-border' 
-                    : 'text-stone-500 hover:bg-stone-100 hover:text-stone-700'
-                }`}
-              >
-                <BarChart3 className="w-3.5 h-3.5" />
-                <span>Centro de Control</span>
-              </button>
+              {canAccessTab('dashboard', userRole) && (
+                <button 
+                  onClick={() => { setActiveTab('dashboard'); setNewOrderForm(false); }}
+                  className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    activeTab === 'dashboard' 
+                      ? 'bg-surface text-arza-800 shadow-xs border border-border' 
+                      : 'text-stone-500 hover:bg-stone-100 hover:text-stone-700'
+                  }`}
+                >
+                  <BarChart3 className="w-3.5 h-3.5" />
+                  <span>Centro de Control</span>
+                </button>
+              )}
 
-              <button 
-                onClick={() => { setActiveTab('catalogo'); setNewOrderForm(false); }}
+              {canAccessTab('catalogo', userRole) && (
+                <button 
+                  onClick={() => { setActiveTab('catalogo'); setNewOrderForm(false); }}
                 className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   activeTab === 'catalogo' 
                     ? 'bg-surface text-arza-800 shadow-xs border border-border' 
@@ -1163,12 +1195,14 @@ He activado los permisos para mapear tu hoja de cálculo real de Arza en Google 
                 }`}
               >
                 <Database className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Catálogo Maestro</span>
-                <span className="sm:hidden">Catálogo</span>
-              </button>
+                  <span className="hidden sm:inline">Catálogo Maestro</span>
+                  <span className="sm:hidden">Catálogo</span>
+                </button>
+              )}
 
-              <button 
-                onClick={() => { setActiveTab('ordenes'); setNewOrderForm(false); }}
+              {canAccessTab('ordenes', userRole) && (
+                <button 
+                  onClick={() => { setActiveTab('ordenes'); setNewOrderForm(false); }}
                 className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer relative ${
                   activeTab === 'ordenes' 
                     ? 'bg-surface text-arza-800 shadow-xs border border-border' 
@@ -1183,9 +1217,11 @@ He activado los permisos para mapear tu hoja de cálculo real de Arza en Google 
                   </span>
                 )}
               </button>
+              )}
 
-              <button 
-                onClick={() => { setActiveTab('bodega'); setNewOrderForm(false); }}
+              {canAccessTab('bodega', userRole) && (
+                <button 
+                  onClick={() => { setActiveTab('bodega'); setNewOrderForm(false); }}
                 className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   activeTab === 'bodega' 
                     ? 'bg-surface text-arza-800 shadow-xs border border-border' 
@@ -1196,20 +1232,41 @@ He activado los permisos para mapear tu hoja de cálculo real de Arza en Google 
                 <span className="hidden md:inline">Entradas de Bodega</span>
                 <span className="md:hidden">Bodega</span>
               </button>
+              )}
+
+              {canAccessTab('auditoria', userRole) && (
+                <button 
+                  onClick={() => { setActiveTab('auditoria'); setNewOrderForm(false); }}
+                className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer relative ${
+                  activeTab === 'auditoria' 
+                    ? 'bg-surface text-arza-800 shadow-xs border border-border' 
+                    : 'text-stone-500 hover:bg-stone-100 hover:text-stone-700'
+                }`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Auditoría</span>
+                <span className="md:hidden">Auditar</span>
+              </button>
+              )}
             </div>
 
             {/* Quick manual entry or reload actions inside header tab strip */}
             <div className="p-2 flex gap-2 w-full sm:w-auto shrink-0 justify-end">
-              <button 
-                onClick={() => {
-                  setNewOrderForm(true);
-                  setActiveTab('ordenes');
-                }}
-                className="bg-arza-600 hover:bg-arza-700 text-white text-[10.5px] font-bold px-3 py-2 rounded-lg flex items-center gap-1.5 cursor-pointer shadow-2xs transition-all"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Cargar OC Manual</span>
-              </button>
+              {userRole === 'rossy' && (
+                <button 
+                  onClick={() => {
+                    setNewOrderForm(true);
+                    setActiveTab('ordenes');
+                  }}
+                  className="bg-arza-600 hover:bg-arza-700 text-white text-[10.5px] font-bold px-3 py-2 rounded-lg flex items-center gap-1.5 cursor-pointer shadow-2xs transition-all"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Cargar OC Manual</span>
+                </button>
+              )}
+              <span className="text-[10px] font-bold text-stone-500 px-2 py-2 bg-stone-100 rounded-lg border border-stone-200 uppercase tracking-wider">
+                Rol: {userRole}
+              </span>
             </div>
           </div>
 
@@ -1361,17 +1418,6 @@ He activado los permisos para mapear tu hoja de cálculo real de Arza en Google 
                       ))}
                     </div>
                   </div>
-
-                  {/* Real-time Central Auditor Dashboard Section */}
-                  <ArzaAuditor 
-                    materials={materials} 
-                    orders={orders} 
-                    warehouse={warehouse} 
-                    onUpdateOrder={handleUpdateOrder}
-                    onUpdateMaterial={handleUpdateMaterial}
-                    onBulkUpdateOrders={handleBulkUpdateOrders}
-                    showToast={showToast}
-                  />
 
                   {/* Google Drive & Sheets Live Integration Panel */}
                   <div className="bg-stone-50 border border-stone-200 rounded-2xl p-5 space-y-4 shadow-2xs">
@@ -1773,6 +1819,40 @@ He activado los permisos para mapear tu hoja de cálculo real de Arza en Google 
                         showToast(`¡Entrada ${entry.id} reconciliada de conformidad!`);
                       }
                     }}
+                    showToast={showToast}
+                  />
+                </motion.div>
+              )}
+
+              {/* TAB 5: Audit and correction tools */}
+              {activeTab === 'auditoria' && (
+                <motion.div 
+                  key="aud"
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -15 }}
+                  className="space-y-4"
+                >
+                  <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 shrink-0 select-none">
+                    <h3 className="text-sm font-bold text-stone-800 flex items-center">
+                      <ShieldCheck className="w-4 h-4 mr-1.5 text-arza-600" />
+                      Auditoría y Correcciones
+                    </h3>
+                    <p className="text-xs text-stone-500">
+                      Hallazgos del agente. Rossy aprueba cada cambio; los Excel fuente nunca se modifican solos.
+                    </p>
+                  </div>
+
+                  <ArzaAuditor 
+                    materials={materials} 
+                    orders={orders} 
+                    warehouse={warehouse} 
+                    token={token}
+                    user={user}
+                    userRole={userRole}
+                    onUpdateOrder={handleUpdateOrder}
+                    onUpdateMaterial={handleUpdateMaterial}
+                    onBulkUpdateOrders={handleBulkUpdateOrders}
                     showToast={showToast}
                   />
                 </motion.div>

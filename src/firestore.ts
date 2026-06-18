@@ -11,11 +11,16 @@ import {
   doc, 
   query, 
   orderBy,
-  Firestore 
+  Firestore,
+  getDoc,
+  Timestamp,
+  addDoc,
+  where,
+  limit
 } from 'firebase/firestore';
 import { initializeApp, getApps } from 'firebase/app';
 import firebaseConfig from '../firebase-applet-config.json';
-import { Material, PurchaseOrder, WarehouseEntry } from './types';
+import { Material, PurchaseOrder, WarehouseEntry, AuditIssue } from './types';
 
 let db: Firestore | null = null;
 
@@ -25,6 +30,39 @@ try {
   db = getFirestore(app);
 } catch (err) {
   console.warn("Could not initialize firestore database client:", err);
+}
+
+export type UserRole = 'rossy' | 'margarita' | 'bodega';
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  name: string;
+  role: UserRole;
+}
+
+export interface AuditLogEntry {
+  id?: string;
+  issueId: string;
+  issueType: AuditIssue['type'];
+  title: string;
+  description: string;
+  approvedByUid: string;
+  approvedByEmail: string;
+  approvedAt: string;
+  actionTaken: string;
+  before: Record<string, unknown>;
+  after: Record<string, unknown>;
+}
+
+export interface CriticalNotification {
+  id?: string;
+  issueId: string;
+  title: string;
+  message: string;
+  severity: 'critical';
+  createdAt: string;
+  dismissed: boolean;
 }
 
 // Ensure database collection references work cleanly
@@ -100,6 +138,115 @@ export const saveWarehouseEntryToCloud = async (entry: WarehouseEntry): Promise<
     return true;
   } catch (err) {
     console.error("Error saving warehouse entry to Firestore:", err);
+    return false;
+  }
+};
+
+export const getUserRole = async (uid: string): Promise<UserProfile | null> => {
+  if (!db) return null;
+  try {
+    const docRef = doc(db, 'users', uid);
+    const snapshot = await getDoc(docRef);
+    if (!snapshot.exists()) return null;
+    return snapshot.data() as UserProfile;
+  } catch (err) {
+    console.error("Error fetching user role:", err);
+    return null;
+  }
+};
+
+export const setUserRole = async (profile: UserProfile): Promise<boolean> => {
+  if (!db) return false;
+  try {
+    const docRef = doc(db, 'users', profile.uid);
+    await setDoc(docRef, profile, { merge: true });
+    return true;
+  } catch (err) {
+    console.error("Error saving user role:", err);
+    return false;
+  }
+};
+
+export const ensureUserProfile = async (user: { uid: string; email: string | null; displayName: string | null }, defaultRole: UserRole = 'rossy'): Promise<UserProfile> => {
+  const existing = await getUserRole(user.uid);
+  if (existing) return existing;
+  const profile: UserProfile = {
+    uid: user.uid,
+    email: user.email || '',
+    name: user.displayName || user.email || 'Usuario',
+    role: defaultRole,
+  };
+  await setUserRole(profile);
+  return profile;
+};
+
+export const saveAuditLog = async (entry: AuditLogEntry): Promise<boolean> => {
+  if (!db) return false;
+  try {
+    const colRef = collection(db, 'audit_logs');
+    await addDoc(colRef, {
+      ...entry,
+      approvedAt: entry.approvedAt || new Date().toISOString(),
+    });
+    return true;
+  } catch (err) {
+    console.error("Error saving audit log:", err);
+    return false;
+  }
+};
+
+export const fetchAuditLogs = async (limitCount = 50): Promise<AuditLogEntry[] | null> => {
+  if (!db) return null;
+  try {
+    const colRef = collection(db, 'audit_logs');
+    const q = query(colRef, orderBy('approvedAt', 'desc'), limit(limitCount));
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return [];
+    return snapshot.docs.map(d => ({ id: d.id, ...(d.data() as AuditLogEntry) }));
+  } catch (err) {
+    console.error("Error fetching audit logs:", err);
+    return null;
+  }
+};
+
+export const createCriticalNotification = async (notification: Omit<CriticalNotification, 'id' | 'createdAt' | 'dismissed'>): Promise<boolean> => {
+  if (!db) return false;
+  try {
+    const colRef = collection(db, 'critical_notifications');
+    await addDoc(colRef, {
+      ...notification,
+      createdAt: new Date().toISOString(),
+      dismissed: false,
+    });
+    return true;
+  } catch (err) {
+    console.error("Error saving critical notification:", err);
+    return false;
+  }
+};
+
+export const fetchCriticalNotifications = async (limitCount = 20): Promise<CriticalNotification[] | null> => {
+  if (!db) return null;
+  try {
+    const colRef = collection(db, 'critical_notifications');
+    const q = query(colRef, where('dismissed', '==', false), orderBy('createdAt', 'desc'), limit(limitCount));
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return [];
+    return snapshot.docs.map(d => ({ id: d.id, ...(d.data() as CriticalNotification) }));
+  } catch (err) {
+    console.error("Error fetching critical notifications:", err);
+    return null;
+  }
+};
+
+export const dismissCriticalNotification = async (id: string): Promise<boolean> => {
+  if (!db) return false;
+  try {
+    const docRef = doc(db, 'critical_notifications', id);
+    await setDoc(docRef, { dismissed: true }, { merge: true });
+    return true;
+  } catch (err) {
+    console.error("Error dismissing notification:", err);
     return false;
   }
 };
