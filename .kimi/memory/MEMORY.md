@@ -33,6 +33,8 @@ El sistema **NO arregla automáticamente** las inconsistencias de los Excel/Shee
   - `margarita`: Dashboard, Catálogo y Auditoría (solo lectura).
   - `bodega`: solo pestaña Entradas de Bodega.
   - Los perfiles se guardan en Firestore (`users/{uid}`) y se crean automáticamente al iniciar sesión.
+- Log de correcciones: cada aprobación guarda before/after en Firestore (`audit_logs`).
+- Notificaciones críticas: badge en header de auditoría + persistencia en `critical_notifications`.
 
 ## Estado actual
 - Backend con agente Gemini (`/api/gemini/chat`) + endpoints de auditoría.
@@ -41,5 +43,4 @@ El sistema **NO arregla automáticamente** las inconsistencias de los Excel/Shee
 - `npm run lint` y `npm run build` pasan.
 
 ## Próximas fases
-1. Notificaciones de hallazgos críticos.
-2. Log persistente de correcciones aprobadas.
+1. Envío real de notificaciones por email/WhatsApp para hallazgos críticos.

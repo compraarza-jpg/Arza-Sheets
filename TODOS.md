@@ -1,10 +1,10 @@
 # TODOS — Arza Sheets
 
 ## En progreso
-- [ ] Notificar por email/ WhatsApp-style cuando hay hallazgos críticos
+- [ ] Notificar por email/ WhatsApp-style cuando hay hallazgos críticos (in-app implementado; falta canal externo)
 
 ## Por hacer
-- [ ] Persistir log de correcciones aprobadas por Rossy
+- [ ] Integrar envío real de notificaciones (email/WhatsApp) para hallazgos críticos
 
 ## Completado
 - [x] Design system (`DESIGN.md`, `CLAUDE.md`)
@@ -26,12 +26,18 @@
 - [x] Mejorar frontend con herramientas de corrección
   - [x] Centro de Control con alertas reales
   - [x] Vista de Auditoría accionable
-  - [x] Catálogo con sugerencias de IA
-  - [x] Bodega simplificada para almacenistas
+  - [x] Acciones de aprobación explícita por Rossy
+  - [x] Corrección de precios, homologación de códigos, conciliación de bodega
 - [x] Agregar roles básicos en Firebase
   - [x] Rossy: todo
   - [x] Margarita: catálogo/precios + ver auditoría
   - [x] Kari/Joli: solo bodega
+- [x] Persistir log de correcciones aprobadas por Rossy en Firestore
+  - [x] `saveAuditLog`
+  - [x] Guardar before/after de cada corrección
+- [x] Notificaciones in-app de hallazgos críticos
+  - [x] Badge en header de auditoría
+  - [x] `createCriticalNotification` en Firestore
 - [x] Verificar lint y build
 - [x] Guardar memoria en GBrain
 - [x] Commit

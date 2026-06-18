@@ -1848,6 +1848,7 @@ He activado los permisos para mapear tu hoja de cálculo real de Arza en Google 
                     orders={orders} 
                     warehouse={warehouse} 
                     token={token}
+                    user={user}
                     userRole={userRole}
                     onUpdateOrder={handleUpdateOrder}
                     onUpdateMaterial={handleUpdateMaterial}

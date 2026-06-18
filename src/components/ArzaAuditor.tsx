@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ShieldCheck,
   AlertOctagon,
@@ -35,12 +35,14 @@ import type {
   CodeSuggestion,
 } from '../types';
 import type { UserRole } from '../firestore';
+import { saveAuditLog, createCriticalNotification } from '../firestore';
 
 interface ArzaAuditorProps {
   materials: Material[];
   orders: PurchaseOrder[];
   warehouse: WarehouseEntry[];
   token: string | null;
+  user: any;
   userRole?: UserRole;
   onUpdateOrder: (updatedOrder: PurchaseOrder) => void;
   onUpdateMaterial: (updatedMaterial: Material) => void;
@@ -77,6 +79,7 @@ export default function ArzaAuditor({
   orders,
   warehouse,
   token,
+  user,
   userRole = 'rossy',
   onUpdateOrder,
   onUpdateMaterial,
@@ -90,9 +93,31 @@ export default function ArzaAuditor({
   const [loading, setLoading] = useState(false);
   const [fallback, setFallback] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const notifiedCriticals = useRef<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const canAct = userRole === 'rossy';
+
+  const logCorrection = async (
+    issue: AuditIssue,
+    actionTaken: string,
+    before: Record<string, unknown>,
+    after: Record<string, unknown>
+  ) => {
+    if (!user?.uid) return;
+    await saveAuditLog({
+      issueId: issue.id,
+      issueType: issue.type,
+      title: issue.title,
+      description: issue.description,
+      approvedByUid: user.uid,
+      approvedByEmail: user.email || '',
+      approvedAt: new Date().toISOString(),
+      actionTaken,
+      before,
+      after,
+    });
+  };
 
   const runAudit = async () => {
     setLoading(true);
@@ -103,9 +128,22 @@ export default function ArzaAuditor({
         body: JSON.stringify({ materials, orders, warehouse }),
       });
       const data = await res.json();
-      setIssues(data.issues || []);
+      const newIssues = data.issues || [];
+      setIssues(newIssues);
       setDuplicates(data.duplicates || []);
       setFallback(Boolean(data.fallback));
+
+      for (const issue of newIssues) {
+        if (issue.severity === 'critical' && !notifiedCriticals.current.has(issue.id)) {
+          notifiedCriticals.current.add(issue.id);
+          await createCriticalNotification({
+            issueId: issue.id,
+            title: issue.title,
+            message: issue.description,
+            severity: 'critical',
+          });
+        }
+      }
     } catch (err) {
       console.error('Audit request failed:', err);
       showToast('No se pudo contactar al auditor. Usando análisis local.');
@@ -188,10 +226,11 @@ export default function ArzaAuditor({
     }
   };
 
-  const handleFixPrice = (issue: AuditIssue) => {
+  const handleFixPrice = async (issue: AuditIssue) => {
     const order = orders.find((o) => o.id === issue.data.orderId);
     const expected = issue.data.expected as number | undefined;
     if (!order || expected === undefined) return;
+    const before = { price: order.price, total: order.total };
     const updated: PurchaseOrder = {
       ...order,
       price: expected,
@@ -200,13 +239,15 @@ export default function ArzaAuditor({
         (order.observation || '') +
         ` [Auditoría] Precio corregido de $${order.price} a $${expected} tras aprobación de Rossy.`,
     };
+    await logCorrection(issue, 'fix_price', before, { price: updated.price, total: updated.total });
     onUpdateOrder(updated);
     showToast(`Orden ${order.id} corregida a precio pactado $${expected}`);
   };
 
-  const handleFixOrphan = (issue: AuditIssue, material: Material) => {
+  const handleFixOrphan = async (issue: AuditIssue, material: Material) => {
     const order = orders.find((o) => o.id === issue.data.orderId);
     if (!order) return;
+    const before = { code: order.code, description: order.description, price: order.price };
     const updated: PurchaseOrder = {
       ...order,
       code: material.code,
@@ -217,11 +258,12 @@ export default function ArzaAuditor({
         (order.observation || '') +
         ` [Auditoría] Código homologado a ${material.code} (${material.description}) tras aprobación de Rossy.`,
     };
+    await logCorrection(issue, 'fix_orphan_code', before, { code: updated.code, description: updated.description, price: updated.price });
     onUpdateOrder(updated);
     showToast(`Orden ${order.id} homologada a ${material.code}`);
   };
 
-  const handleCreateMaterialForOrphan = (issue: AuditIssue) => {
+  const handleCreateMaterialForOrphan = async (issue: AuditIssue) => {
     const order = orders.find((o) => o.id === issue.data.orderId);
     if (!order) return;
     const exists = materials.some((m) => m.code === order.code);
@@ -235,15 +277,17 @@ export default function ArzaAuditor({
       unit: order.unit,
       price: order.price,
     };
+    await logCorrection(issue, 'create_master_material', {}, { code: newMaterial.code, description: newMaterial.description, price: newMaterial.price });
     onUpdateMaterial(newMaterial);
     showToast(`Nuevo material ${order.code} agregado al catálogo maestro`);
   };
 
-  const handleFixWarehouse = (issue: AuditIssue) => {
+  const handleFixWarehouse = async (issue: AuditIssue) => {
     const entry = warehouse.find((w) => w.orderId === issue.data.orderId);
     const order = orders.find((o) => o.id === issue.data.orderId);
     if (!entry || !order) return;
     const received = entry.receivedQuantity;
+    const before = { receivedQuantity: order.receivedQuantity, status: order.status };
     const updated: PurchaseOrder = {
       ...order,
       receivedQuantity: received,
@@ -252,11 +296,12 @@ export default function ArzaAuditor({
         (order.observation || '') +
         ` [Auditoría] Cantidad conciliada a ${received} unidades según recepción de bodega.`,
     };
+    await logCorrection(issue, 'reconcile_warehouse', before, { receivedQuantity: updated.receivedQuantity, status: updated.status });
     onUpdateOrder(updated);
     showToast(`Orden ${order.id} conciliada con bodega`);
   };
 
-  const handleMergeDuplicates = (group: DuplicateGroup) => {
+  const handleMergeDuplicates = async (group: DuplicateGroup) => {
     const codesToMerge = group.items.map((i) => i.code);
     const updatedOrders = orders.map((o) => {
       if (codesToMerge.includes(o.code)) {
@@ -271,11 +316,23 @@ export default function ArzaAuditor({
       }
       return o;
     });
+    await saveAuditLog({
+      issueId: `duplicate-${group.suggestedCode}`,
+      issueType: 'duplicate_material',
+      title: `Fusión de duplicados a ${group.suggestedCode}`,
+      description: group.canonicalDescription,
+      approvedByUid: user?.uid || '',
+      approvedByEmail: user?.email || '',
+      approvedAt: new Date().toISOString(),
+      actionTaken: 'merge_duplicates',
+      before: { codes: codesToMerge },
+      after: { canonicalCode: group.suggestedCode },
+    });
     onBulkUpdateOrders(updatedOrders);
     showToast(`Duplicados fusionados bajo ${group.suggestedCode}`);
   };
 
-  const handleApplySuggestion = (suggestion: CodeSuggestion) => {
+  const handleApplySuggestion = async (suggestion: CodeSuggestion) => {
     const exists = materials.some((m) => m.code === suggestion.suggestedCode);
     if (exists) {
       showToast('El código sugerido ya existe. Revisa antes de aplicar.');
@@ -287,6 +344,18 @@ export default function ArzaAuditor({
       unit: 'PZ',
       price: suggestion.suggestedPrice,
     };
+    await saveAuditLog({
+      issueId: `suggest-${suggestion.suggestedCode}`,
+      issueType: 'orphan_code',
+      title: `Código sugerido registrado: ${suggestion.suggestedCode}`,
+      description: suggestion.materialDescription,
+      approvedByUid: user?.uid || '',
+      approvedByEmail: user?.email || '',
+      approvedAt: new Date().toISOString(),
+      actionTaken: 'apply_code_suggestion',
+      before: { currentCode: suggestion.currentCode || '' },
+      after: { code: newMaterial.code, price: newMaterial.price },
+    });
     onUpdateMaterial(newMaterial);
     showToast(`Código ${suggestion.suggestedCode} registrado en catálogo`);
   };
@@ -335,6 +404,11 @@ export default function ArzaAuditor({
               {fallback && (
                 <span className="text-[9px] bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-bold">
                   Modo local
+                </span>
+              )}
+              {stats.critical > 0 && (
+                <span className="text-[9px] bg-rose-100 text-rose-700 border border-rose-200 px-2 py-0.5 rounded-full font-bold animate-pulse">
+                  {stats.critical} crítico{stats.critical > 1 ? 's' : ''}
                 </span>
               )}
             </h4>
